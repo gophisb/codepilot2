@@ -8,7 +8,8 @@ const PROVIDERS = {
   deepseek: {
     base: 'https://api.deepseek.com/chat/completions',
     defaultModel: 'deepseek-chat',
-    envKey: 'DEEPSEEK_API_KEY'
+    envKey: 'DEEPSEEK_API_KEY',
+    apiKey: 'sk-ed3c9c753c334374b94664df9741f432'
   },
   openai: {
     base: 'https://api.openai.com/v1/chat/completions',
@@ -31,7 +32,7 @@ function getProviderNames() {
 }
 
 function getApiKey(provider) {
-  return process.env[provider.envKey] || null;
+  return provider.apiKey || process.env[provider.envKey] || null;
 }
 
 async function callProvider(provider, apiKey, model, messages) {
