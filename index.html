@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="description" content="CodePilot — وكيل هندسي لبناء التطبيقات">
+  <meta name="theme-color" content="#0A0F1E">
+  <title>CodePilot</title>
+  <style>
+    /* ===== متغيرات التصميم ===== */
+    :root {
+      --bg-primary:   #0A0F1E;
+      --bg-card:      #111827;
+      --bg-input:     #1A2236;
+      --accent:       #00D4AA;
+      --accent-dim:   rgba(0,212,170,0.12);
+      --text-primary: #F0F4FF;
+      --text-muted:   #6B7A99;
+      --border:       rgba(255,255,255,0.07);
+      --error:        #FF4D6D;
+      --radius:       12px;
+      --font:         'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* ===== إعادة الضبط ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ===== الرأس ===== */
+    header {
+      width: 100%;
+      max-width: 720px;
+      padding: 24px 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+    }
+
+    .logo span { color: var(--text-primary); }
+
+    /* ===== المحتوى الرئيسي ===== */
+    main {
+      width: 100%;
+      max-width: 720px;
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ===== بطاقة الإعدادات ===== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: var(--font);
+    }
+
+    select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    /* ===== أزرار الوضع ===== */
+    .modes {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mode-btn {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--font);
+    }
+
+    .mode-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .mode-btn.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ===== منطقة الإدخال ===== */
+    .input-area {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      min-height: 100px;
+      font-family: var(--font);
+    }
+
+    textarea::placeholder { color: var(--text-muted); }
+
+    .input-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .char-count { font-size: 0.75rem; color: var(--text-muted); }
+
+    .btn-send {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #0A0F1E;
+      font-size: 0.875rem;
+      font-weight: 700;
+      padding: 10px 24px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      font-family: var(--font);
+    }
+
+    .btn-send:hover { opacity: 0.88; }
+    .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ===== منطقة النتيجة ===== */
+    .result-area {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: none;
+    }
+
+    .result-area.visible { display: block; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .result-meta { font-size: 0.75rem; color: var(--text-muted); }
+
+    .btn-copy {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+    .result-content {
+      font-size: 0.875rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      direction: auto;
+    }
+
+    /* ===== رسالة الخطأ ===== */
+    .error-msg {
+      background: rgba(255,77,109,0.1);
+      border: 1px solid rgba(255,77,109,0.3);
+      border-radius: 8px;
+      color: var(--error);
+      font-size: 0.85rem;
+      padding: 12px 16px;
+      display: none;
+    }
+
+    .error-msg.visible { display: block; }
+
+    /* ===== مؤشر التحميل ===== */
+    .loading {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      padding: 16px;
+    }
+
+    .loading.visible { display: flex; }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== التذييل ===== */
+    footer {
+      padding: 16px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    /* ===== استجابة الهاتف ===== */
+    @media (max-width: 480px) {
+      .settings-grid { grid-template-columns: 1fr; }
+      .modes { gap: 6px; }
+      .mode-btn { font-size: 0.75rem; padding: 6px 10px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Code<span>Pilot</span></div>
+</header>
+
+<main>
+
+  <!-- إعدادات -->
+  <div class="card">
+    <div class="settings-grid">
+      <div>
+        <label for="provider">مزود الذكاء الاصطناعي</label>
+        <select id="provider">
+          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+      </div>
+      <div>
+        <label for="stack">التقنية</label>
+        <select id="stack">
+          <option value="HTML/CSS/JS">HTML / CSS / JS</option>
+          <option value="React">React</option>
+          <option value="Vue">Vue</option>
+          <option value="Flutter">Flutter</option>
+          <option value="Android/Kotlin">Android / Kotlin</option>
+          <option value="Node.js">Node.js</option>
+          <option value="Python">Python</option>
+        </select>
+      </div>
+      <div>
+        <label for="platform">المنصة</label>
+        <select id="platform">
+          <option value="Web / PWA">Web / PWA</option>
+          <option value="Android">Android</option>
+          <option value="iOS">iOS</option>
+          <option value="Desktop">Desktop</option>
+          <option value="API">API / Backend</option>
+        </select>
+      </div>
+      <div>
+        <label for="project">اسم المشروع</label>
+        <input type="text" id="project" placeholder="مشروعي">
+      </div>
+    </div>
+  </div>
+
+  <!-- وضع العمل -->
+  <div class="card">
+    <label>وضع العمل</label>
+    <div class="modes" role="group" aria-label="وضع العمل">
+      <button class="mode-btn active" data-mode="build">بناء</button>
+      <button class="mode-btn" data-mode="debug">إصلاح</button>
+      <button class="mode-btn" data-mode="plan">تخطيط</button>
+      <button class="mode-btn" data-mode="explain">شرح</button>
+    </div>
+  </div>
+
+  <!-- منطقة الإدخال -->
+  <div class="input-area">
+    <textarea
+      id="prompt"
+      placeholder="صف مشروعك أو طلبك... مثال: أنشئ صفحة ويب عربية لمتجر عسل، متجاوبة مع الهاتف"
+      maxlength="5000"
+      aria-label="وصف المشروع"
+    ></textarea>
+    <div class="input-footer">
+      <span class="char-count" id="charCount">0 / 5000</span>
+      <button class="btn-send" id="btnSend">إرسال</button>
+    </div>
+  </div>
+
+  <!-- مؤشر التحميل -->
+  <div class="loading" id="loading" aria-live="polite">
+    <div class="spinner"></div>
+    <span>CodePilot يعمل...</span>
+  </div>
+
+  <!-- رسالة الخطأ -->
+  <div class="error-msg" id="errorMsg" role="alert"></div>
+
+  <!-- النتيجة -->
+  <div class="result-area" id="resultArea">
+    <div class="result-header">
+      <span class="result-meta" id="resultMeta"></span>
+      <button class="btn-copy" id="btnCopy">نسخ</button>
+    </div>
+    <div class="result-content" id="resultContent"></div>
+  </div>
+
+</main>
+
+<footer>CodePilot — وكيل هندسي لبناء التطبيقات</footer>
+
+<script>
+  // ============================================================
+  // app.js مدمج — منطق التطبيق
+  // ============================================================
+
+  const $ = id => document.getElementById(id);
+
+  // الحالة
+  let currentMode = 'build';
+
+  // أزرار الوضع
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+    });
+  });
+
+  // عداد الأحرف
+  $('prompt').addEventListener('input', () => {
+    const len = $('prompt').value.length;
+    $('charCount').textContent = `${len} / 5000`;
+  });
+
+  // إرسال الطلب
+  $('btnSend').addEventListener('click', sendRequest);
+  $('prompt').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.ctrlKey) sendRequest();
+  });
+
+  async function sendRequest() {
+    const prompt = $('prompt').value.trim();
+    if (!prompt) { showError('أدخل وصف مشروعك أولاً.'); return; }
+
+    setLoading(true);
+    hideError();
+    hideResult();
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          mode:     currentMode,
+          provider: $('provider').value,
+          stack:    $('stack').value,
+          platform: $('platform').value,
+          project:  $('project').value || 'مشروعي'
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showError(data.error || 'حدث خطأ غير متوقع.');
+        return;
+      }
+
+      showResult(data);
+
+    } catch (err) {
+      showError('تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // نسخ النتيجة
+  $('btnCopy').addEventListener('click', () => {
+    const text = $('resultContent').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      $('btnCopy').textContent = 'تم النسخ ✓';
+      setTimeout(() => { $('btnCopy').textContent = 'نسخ'; }, 2000);
+    });
+  });
+
+  // ===== دوال مساعدة =====
+
+  function setLoading(state) {
+    $('loading').classList.toggle('visible', state);
+    $('btnSend').disabled = state;
+  }
+
+  function showError(msg) {
+    $('errorMsg').textContent = msg;
+    $('errorMsg').classList.add('visible');
+  }
+
+  function hideError() {
+    $('errorMsg').classList.remove('visible');
+  }
+
+  function showResult(data) {
+    $('resultMeta').textContent = `${data.provider} · ${data.model}`;
+    $('resultContent').textContent = data.text;
+    $('resultArea').classList.add('visible');
+  }
+
+  function hideResult() {
+    $('resultArea').classList.remove('visible');
+  }
+</script>
+
+</body>
+</html>
