@@ -59,8 +59,8 @@ module.exports = async function handler(req, res) {
       body.stack
     );
 
-    const providerName = String(body.provider || 'deepseek').toLowerCase();
-    const model = body.model || null;
+    const providerName = String(body.provider || process.env.AI_PROVIDER || 'gemini').toLowerCase();
+    const model = body.model || process.env.AI_MODEL || null;
 
     const result = await generate({ providerName, model, systemPrompt, userPrompt: prompt });
 

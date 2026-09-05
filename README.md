@@ -6,16 +6,21 @@
 
 1. ارفع المشروع على GitHub
 2. استورده في Vercel
-3. أضف متغير البيئة: `DEEPSEEK_API_KEY`
+3. أضف متغير البيئة: `GEMINI_API_KEY`
 4. انشر
 
 ## المتغيرات المطلوبة
 
 | المتغير | الوصف |
 |---------|-------|
-| `DEEPSEEK_API_KEY` | مفتاح DeepSeek API |
+| `GEMINI_API_KEY` | مفتاح Google Gemini API |
+| `AI_PROVIDER` | المزود الافتراضي، وقيمته المقترحة `gemini` |
+| `AI_MODEL` | النموذج الاختياري، والافتراضي `gemini-2.5-flash` |
+| `DEEPSEEK_API_KEY` | مفتاح DeepSeek API (اختياري) |
 | `OPENAI_API_KEY` | مفتاح OpenAI (اختياري) |
 | `OPENROUTER_API_KEY` | مفتاح OpenRouter (اختياري) |
+
+يدعم التطبيق Google Gemini وDeepSeek وOpenAI وOpenRouter. أضف المفاتيح في إعدادات Vercel فقط، ولا ترفعها إلى GitHub.
 
 ## الهيكل
 
