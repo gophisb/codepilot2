@@ -409,13 +409,14 @@
   const githubBtn = $('githubBtn');
   const githubStatus = $('githubStatus');
   const githubRepos = $('githubRepos');
+  let generatedFiles = [];
 
   async function loadGitHubStatus() {
     try {
       const response = await fetch('/api/github?action=status');
       const data = await response.json();
       if (data.connected) {
-        githubStatus.textContent = 'متصل باسم ' + data.login + ' — قراءة المستودعات متاحة';
+        githubStatus.textContent = 'متصل باسم ' + data.login;
         githubBtn.textContent = 'عرض المستودعات';
         await loadGitHubRepos();
       } else {
@@ -432,16 +433,52 @@
       const response = await fetch('/api/github?action=repos');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'تعذر تحميل المستودعات');
-      githubRepos.innerHTML = data.repositories.map(repo =>
-        '<div style="padding:10px 0;border-top:1px solid var(--border);font-size:.85rem;">' +
-        '<strong>' + escapeHtml(repo.full_name) + '</strong>' +
-        '<span style="color:var(--text-muted);"> — ' + (repo.private ? 'خاص' : 'عام') + '</span>' +
-        '</div>'
-      ).join('') || '<div style="color:var(--text-muted);">لا توجد مستودعات.</div>';
+
+      if (!data.repositories.length) {
+        githubRepos.innerHTML = '<div style="color:var(--text-muted);">لا توجد مستودعات.</div>';
+      } else {
+        githubRepos.innerHTML =
+          '<label for="repoSelect">المستودع المستهدف</label>' +
+          '<select id="repoSelect">' +
+          data.repositories.map(function(repo) {
+            return '<option value="' + escapeHtml(repo.full_name) + '">' +
+              escapeHtml(repo.full_name) + (repo.private ? ' — خاص' : ' — عام') +
+              '</option>';
+          }).join('') +
+          '</select>' +
+          '<button class="btn-send" id="writeGithubBtn" style="margin-top:10px;width:100%;" disabled>رفع المشروع إلى GitHub</button>';
+        $('writeGithubBtn').addEventListener('click', writeGeneratedProject);
+      }
       githubRepos.style.display = 'block';
     } catch (err) {
       githubRepos.innerHTML = '<div style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
       githubRepos.style.display = 'block';
+    }
+  }
+
+  async function writeGeneratedProject() {
+    if (!generatedFiles.length) return showError('ولّد المشروع أولاً.');
+    const btn = $('writeGithubBtn');
+    btn.disabled = true;
+    btn.textContent = 'جاري الرفع...';
+    try {
+      const response = await fetch('/api/github?action=write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repository: $('repoSelect').value,
+          files: generatedFiles,
+          message: 'CodePilot: generate project'
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'فشل رفع المشروع.');
+      btn.textContent = 'تم الرفع ✓ — فرع ' + data.branch;
+      githubStatus.textContent = 'تم إنشاء فرع جديد بأمان؛ لم يتم تعديل main.';
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'رفع المشروع إلى GitHub';
+      showError(err.message);
     }
   }
 
@@ -484,16 +521,17 @@
     hideResult();
 
     try {
-      const response = await fetch('/api/chat', {
+      const endpoint = currentMode === 'build' ? '/api/generate' : '/api/chat';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt,
-          mode:     currentMode,
+          mode: currentMode,
           provider: $('provider').value,
-          stack:    $('stack').value,
+          stack: $('stack').value,
           platform: $('platform').value,
-          project:  $('project').value || 'مشروعي'
+          project: $('project').value || 'مشروعي'
         })
       });
 
@@ -504,7 +542,21 @@
         return;
       }
 
-      showResult(data);
+      if (currentMode === 'build') {
+        generatedFiles = Array.isArray(data.files) ? data.files : [];
+        const listing = generatedFiles.map(function(file) {
+          return '📄 ' + file.path;
+        }).join('\n');
+        showResult({
+          provider: data.provider,
+          model: data.model,
+          text: (data.summary ? data.summary + '\n\n' : '') + 'الملفات المولدة (' + generatedFiles.length + '):\n' + listing
+        });
+        const writeBtn = $('writeGithubBtn');
+        if (writeBtn) writeBtn.disabled = generatedFiles.length === 0;
+      } else {
+        showResult(data);
+      }
 
     } catch (err) {
       showError('تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.');
