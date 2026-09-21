@@ -286,6 +286,18 @@
 
 <main>
 
+  <!-- GitHub -->
+  <div class="card" id="githubCard">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;">GitHub</div>
+        <div id="githubStatus" style="font-size:.75rem;color:var(--text-muted);">غير متصل — وضع القراءة فقط حتى الآن</div>
+      </div>
+      <button class="btn-copy" id="githubBtn">ربط GitHub</button>
+    </div>
+    <div id="githubRepos" style="display:none;margin-top:12px;"></div>
+  </div>
+
   <!-- إعدادات -->
   <div class="card">
     <div class="settings-grid">
@@ -392,6 +404,64 @@
       currentMode = btn.dataset.mode;
     });
   });
+
+  // ===== GitHub: اتصال وقراءة المستودعات =====
+  const githubBtn = $('githubBtn');
+  const githubStatus = $('githubStatus');
+  const githubRepos = $('githubRepos');
+
+  async function loadGitHubStatus() {
+    try {
+      const response = await fetch('/api/github?action=status');
+      const data = await response.json();
+      if (data.connected) {
+        githubStatus.textContent = 'متصل باسم ' + data.login + ' — قراءة المستودعات متاحة';
+        githubBtn.textContent = 'عرض المستودعات';
+        await loadGitHubRepos();
+      } else {
+        githubStatus.textContent = 'غير متصل — اضغط لربط حساب GitHub';
+        githubBtn.textContent = 'ربط GitHub';
+      }
+    } catch {
+      githubStatus.textContent = 'تعذر التحقق من اتصال GitHub';
+    }
+  }
+
+  async function loadGitHubRepos() {
+    try {
+      const response = await fetch('/api/github?action=repos');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'تعذر تحميل المستودعات');
+      githubRepos.innerHTML = data.repositories.map(repo =>
+        '<div style="padding:10px 0;border-top:1px solid var(--border);font-size:.85rem;">' +
+        '<strong>' + escapeHtml(repo.full_name) + '</strong>' +
+        '<span style="color:var(--text-muted);"> — ' + (repo.private ? 'خاص' : 'عام') + '</span>' +
+        '</div>'
+      ).join('') || '<div style="color:var(--text-muted);">لا توجد مستودعات.</div>';
+      githubRepos.style.display = 'block';
+    } catch (err) {
+      githubRepos.innerHTML = '<div style="color:var(--error);">' + escapeHtml(err.message) + '</div>';
+      githubRepos.style.display = 'block';
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function(ch) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+  }
+
+  githubBtn.addEventListener('click', function() {
+    fetch('/api/github?action=status')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.connected) loadGitHubRepos();
+        else window.location.href = '/api/github?action=login';
+      })
+      .catch(function() { showError('تعذر الاتصال بخدمة GitHub.'); });
+  });
+
+  loadGitHubStatus();
 
   // عداد الأحرف
   $('prompt').addEventListener('input', () => {
