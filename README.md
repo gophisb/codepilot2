@@ -33,3 +33,29 @@ codepilot/
 ├── .gitignore
 └── README.md
 ```
+
+
+## GitHub Integration — المرحلة 1
+
+CodePilot2 now includes a simple GitHub connection foundation:
+- OAuth login from the app
+- Encrypted HttpOnly session cookie
+- CSRF state validation
+- Read-only repository listing in the UI
+- No GitHub token is stored in the browser localStorage
+
+### Vercel environment variables
+
+Add these variables in Vercel Project Settings → Environment Variables:
+
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GITHUB_SESSION_SECRET` — long random secret
+
+Create a GitHub OAuth App and set its callback URL to:
+
+`https://YOUR-DOMAIN/api/github?action=callback`
+
+For local development, use the matching local callback URL.
+
+The next stage will add repository selection and controlled file writing. Until then, GitHub integration remains read-only.
