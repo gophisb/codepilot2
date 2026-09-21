@@ -83,6 +83,93 @@ async function githubFetch(path, token) {
   return data;
 }
 
+
+
+async function githubRequest(path, token, options) {
+  const response = await fetch(GITHUB_API + path, {
+    ...options,
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token,
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(options && options.headers ? options.headers : {})
+    }
+  });
+  const data = await response.json().catch(function() { return {}; });
+  if (!response.ok) throw new Error(data.message || ('GitHub HTTP ' + response.status));
+  return data;
+}
+
+function validRepoName(value) {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value);
+}
+
+function validPath(value) {
+  return typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 240 &&
+    !value.startsWith('/') &&
+    !value.includes('..') &&
+    !value.includes('\\0');
+}
+
+async function writeProject(token, repository, files, message) {
+  if (!validRepoName(repository)) throw new Error('اسم المستودع غير صالح.');
+  if (!Array.isArray(files) || files.length < 1 || files.length > 80) {
+    throw new Error('عدد الملفات يجب أن يكون بين 1 و80.');
+  }
+
+  const repo = await githubRequest('/repos/' + repository, token, { method: 'GET' });
+  const baseBranch = repo.default_branch;
+  const ref = await githubRequest('/repos/' + repository + '/git/ref/heads/' + encodeURIComponent(baseBranch), token, { method: 'GET' });
+  const baseSha = ref.object.sha;
+  const baseCommit = await githubRequest('/repos/' + repository + '/git/commits/' + baseSha, token, { method: 'GET' });
+
+  const normalized = files.map(function(file) {
+    const path = String(file.path || '');
+    const content = String(file.content || '');
+    if (!validPath(path)) throw new Error('مسار ملف غير صالح: ' + path);
+    if (content.length > 200000) throw new Error('الملف كبير جداً: ' + path);
+    return { path: path, content: content };
+  });
+
+  const blobs = [];
+  for (const file of normalized) {
+    const blob = await githubRequest('/repos/' + repository + '/git/blobs', token, {
+      method: 'POST',
+      body: JSON.stringify({ content: file.content, encoding: 'utf-8' })
+    });
+    blobs.push({ path: file.path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+
+  const tree = await githubRequest('/repos/' + repository + '/git/trees', token, {
+    method: 'POST',
+    body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree: blobs })
+  });
+
+  const commit = await githubRequest('/repos/' + repository + '/git/commits', token, {
+    method: 'POST',
+    body: JSON.stringify({
+      message: message || 'CodePilot: generate project',
+      tree: tree.sha,
+      parents: [baseSha]
+    })
+  });
+
+  const branch = 'codepilot/' + Date.now().toString(36);
+  await githubRequest('/repos/' + repository + '/git/refs', token, {
+    method: 'POST',
+    body: JSON.stringify({ ref: 'refs/heads/' + branch, sha: commit.sha })
+  });
+
+  return {
+    branch: branch,
+    commit_sha: commit.sha,
+    files: normalized.map(function(file) { return file.path; })
+  };
+}
+
 module.exports = async function handler(req, res) {
   const action = String(req.query && req.query.action || 'status');
 
@@ -154,6 +241,21 @@ module.exports = async function handler(req, res) {
       } catch {
         return send(res, 200, { connected: false });
       }
+    }
+
+    if (action === 'write') {
+      if (!session || !session.access_token) return send(res, 401, { error: 'اربط حساب GitHub أولاً.' });
+      let payload = req.body;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch { payload = {}; }
+      }
+      const result = await writeProject(
+        session.access_token,
+        String(payload.repository || ''),
+        payload.files,
+        String(payload.message || 'CodePilot: generate project')
+      );
+      return send(res, 200, result);
     }
 
     if (action === 'repos') {
