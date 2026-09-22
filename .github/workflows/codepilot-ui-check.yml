@@ -21,7 +21,7 @@ jobs:
       - name: Check root page wiring
         run: |
           test -s index.html
-          grep -Fq './main.js?v=20260922-stable' index.html
+          grep -Fq './main.js?v=20260922-github-final' index.html
           test -s app.js
           ! grep -Fq '</script>' main.js
 
