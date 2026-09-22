@@ -383,7 +383,7 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           if grep -q '"vite"' package.json; then
-            npm run build -- --base="/${GITHUB_REPOSITORY#*/}/"
+            npm run build -- --base="/\${GITHUB_REPOSITORY#*/}/"
           else
             npm run build --if-present
           fi
