@@ -361,9 +361,68 @@ jobs:
           # This avoids relying on an HTTP extra-header being accepted by Git's HTTPS transport.
           gh auth setup-git
 
+          # Add a real build/deploy workflow to generated web projects.
+          # It installs Node dependencies and publishes dist/build/out through GitHub Pages.
+          if [[ "$PLATFORM" == *"Web"* || "$PLATFORM" == *"PWA"* ]]; then
+            mkdir -p generated-project/.github/workflows
+            cat > generated-project/.github/workflows/deploy-pages.yml <<'YAML'
+name: Build and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi
+      - name: Build web project
+        if: hashFiles('package.json') != ''
+        run: npm run build --if-present
+      - name: Select Pages output
+        run: |
+          if [ -d dist ]; then echo "PAGES_DIR=dist" >> "$GITHUB_ENV"; elif [ -d build ]; then echo "PAGES_DIR=build" >> "$GITHUB_ENV"; elif [ -d out ]; then echo "PAGES_DIR=out" >> "$GITHUB_ENV"; else echo "PAGES_DIR=." >> "$GITHUB_ENV"; fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ env.PAGES_DIR }}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+YAML
+          fi
           cd generated-project
-          git init
-          # git init creates a fresh local repository, so identity must be configured
+          git init          # git init creates a fresh local repository, so identity must be configured
           # after initialization (configuring it before git init is lost).
           git config user.name "CodePilot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -390,17 +449,11 @@ jobs:
           import os,json,urllib.request,urllib.error,pathlib
 
           token=os.environ["GH_TOKEN"]
-          owner=os.environ["GITHUB_REPOSITORY_OWNER"]
           target=pathlib.Path("target_repo.txt").read_text(encoding="utf-8").strip()
           repo_path=target.split("github.com/",1)[-1].removesuffix(".git").strip("/")
           owner,project=repo_path.split("/",1)
-          api="https://api.github.com/repos/"+owner+"/"+project+"/pages"
-          headers={
-            "Accept":"application/vnd.github+json",
-            "Authorization":"Bearer "+token,
-            "X-GitHub-Api-Version":"2026-03-10",
-            "Content-Type":"application/json"
-          }
+          api="https://api.github.com/repos/"+owner+"/"+project
+          headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"X-GitHub-Api-Version":"2026-03-10","Content-Type":"application/json"}
 
           def request(method,url,payload=None):
             data=json.dumps(payload).encode() if payload is not None else None
@@ -413,30 +466,35 @@ jobs:
               body=e.read().decode("utf-8","replace")
               return e.code, body
 
-          status,body=request("POST",api,{"source":{"branch":"main","path":"/"}})
-          if status not in (201,202,409):
-            raise SystemExit("GitHub Pages configuration failed: HTTP "+str(status)+" "+str(body)[:1200])
-
+          pages_api=api+"/pages"
+          status,body=request("POST",pages_api,{"build_type":"workflow","source":{"branch":"main","path":"/"}})
           if status==409:
-            status2,body2=request("GET",api)
-            if status2!=200:
-              raise SystemExit("GitHub Pages already exists but could not be read: HTTP "+str(status2)+" "+str(body2)[:1200])
-            body=body2
+            status2,body2=request("PUT",pages_api,{"build_type":"workflow","source":{"branch":"main","path":"/"}})
+            if status2 not in (200,204):
+              raise SystemExit("GitHub Pages workflow configuration failed: HTTP "+str(status2)+" "+str(body2)[:1200])
+          elif status not in (201,202):
+            raise SystemExit("GitHub Pages creation failed: HTTP "+str(status)+" "+str(body)[:1200])
 
           pages_url="https://"+owner+".github.io/"+project+"/"
           pathlib.Path("pages-url.txt").write_text(pages_url+"\n",encoding="utf-8")
           pathlib.Path("target-pages-repo.txt").write_text(owner+"/"+project+"\n",encoding="utf-8")
           with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
-            f.write("\n## Public GitHub Pages\n\n**URL:** "+pages_url+"\n\nSource: \`main\` / \`/\`\n")
-          print("GitHub Pages URL: "+pages_url)
+            f.write("\n## Public GitHub Pages\n\n**URL:** "+pages_url+"\n\nSource: GitHub Actions workflow / main\n")
+          print("GitHub Pages workflow configured: "+pages_url)
+
+          dispatch_api=api+"/actions/workflows/deploy-pages.yml/dispatches"
+          dstatus,dbody=request("POST",dispatch_api,{"ref":"main"})
+          if dstatus not in (200,201,204):
+            print("Workflow dispatch warning: HTTP "+str(dstatus)+" "+str(dbody)[:1000])
+          else:
+            print("Target Pages build dispatched.")
           PY
 
       - name: Verify GitHub Pages entry point
         if: contains(inputs.platform, 'Web') || contains(inputs.platform, 'PWA')
         run: |
           set -euo pipefail
-          test -f generated-project/index.html
           test -s pages-url.txt
           test -s target-pages-repo.txt
-          echo "Pages entry point and URL are ready for $(cat target-pages-repo.txt)."
+          echo "Pages workflow and public URL are ready for $(cat target-pages-repo.txt)."
 
