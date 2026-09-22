@@ -17,13 +17,14 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       ISSUE_BODY: ${{ github.event.issue.body }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Parse request
+      - name: Send request to CodePilot
         run: |
           python3 - <<'PY'
-          import os,re,base64
-          body=os.environ.get("ISSUE_BODY","")
-          m=re.search(r"<!-- CodePilot2 request\n(.*?)\n-->",body,re.S)
+          import os,re,base64,json,urllib.request
+          body=os.environ["ISSUE_BODY"]
+          m=re.search(r"<!-- CodePilot2 request
+(.*?)
+-->",body,re.S)
           if not m: raise SystemExit("Invalid CodePilot2 request")
           meta={}
           for line in m.group(1).splitlines():
@@ -31,28 +32,26 @@ jobs:
                   k,v=line.split("=",1); meta[k.strip()]=v.strip()
           required=["request_id","project","provider","stack","platform","prompt_b64"]
           missing=[k for k in required if not meta.get(k)]
-          if missing: raise SystemExit("Missing fields: "+", ".join(missing))
-          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]): raise SystemExit("Invalid project")
+          if missing: raise SystemExit("Missing: "+", ".join(missing))
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]):
+              raise SystemExit("Invalid project")
           prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
-          if not prompt.strip(): raise SystemExit("Empty prompt")
-          with open("/tmp/codepilot.env","w") as f:
-              for k in ["request_id","project","provider","stack","platform"]:
-                  f.write(k.upper()+"="+meta[k]+"\n")
-          with open("/tmp/prompt.txt","w") as f: f.write(prompt)
+          payload={"event_type":"codepilot_generate","client_payload":{
+              "request_id":meta["request_id"],"project":meta["project"],
+              "provider":meta["provider"],"stack":meta["stack"],
+              "platform":meta["platform"],"prompt":prompt}}
+          req=urllib.request.Request(
+              "https://api.github.com/repos/gophisb/codepilot2/dispatches",
+              data=json.dumps(payload).encode(),
+              headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                       "X-GitHub-Api-Version":"2026-03-10","Content-Type":"application/json"},
+              method="POST")
+          with urllib.request.urlopen(req,timeout=30) as r:
+              if r.status not in (200,201,204): raise SystemExit("Dispatch HTTP "+str(r.status))
           PY
-          cat /tmp/codepilot.env >> "$GITHUB_ENV"
-          {
-            echo "PROMPT<<__CODEPILOT__"
-            cat /tmp/prompt.txt
-            echo
-            echo "__CODEPILOT__"
-          } >> "$GITHUB_ENV"
-      - name: Start CodePilot
-        run: |
-          set -euo pipefail
-          gh workflow run codepilot-run.yml --repo "${{ github.repository }}" --ref main             -f prompt="$PROMPT" -f provider="$PROVIDER" -f stack="$STACK"             -f platform="$PLATFORM" -f project="$PROJECT" -f request_id="$REQUEST_ID"
+
       - name: Comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}"             --body "تم استلام طلب CodePilot2 وتشغيل GitHub. معرّف الطلب: $REQUEST_ID."
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}"             --body "تم إرسال طلب CodePilot2 إلى GitHub Actions."
