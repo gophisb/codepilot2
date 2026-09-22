@@ -95,20 +95,20 @@ jobs:
           def call_openrouter():
             key=keys["openrouter"]
             if not key: raise RuntimeError("OPENROUTER_API_KEY is missing")
-            models_list=[
-              "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
-              "poolside/laguna-s-2.1:free",
-              "inclusionai/ling-3.0-flash:free",
-              "nvidia/nemotron-3.5-lightning:free"
-            ]
-            data=post("https://openrouter.ai/api/v1/chat/completions",{
-              "model":models_list[0],
-              "models":models_list,
-              "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+            # Use OpenRouter's current free router instead of hard-coding
+            # model IDs that can disappear or reject the request with HTTP 400.
+            payload={
+              "model":"openrouter/free",
+              "messages":[
+                {"role":"system","content":system},
+                {"role":"user","content":user}
+              ],
               "temperature":0.2,
               "max_tokens":12000
-            },{
+            }
+            data=post("https://openrouter.ai/api/v1/chat/completions",payload,{
               "Authorization":"Bearer "+key,
+              "Content-Type":"application/json",
               "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
               "X-Title":"CodePilot2"
             })
