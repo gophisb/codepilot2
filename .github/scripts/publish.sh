@@ -20,40 +20,10 @@ while gh repo view "$owner/$candidate" >/dev/null 2>&1; do
   n=$((n+1))
 done
 
-if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
-  mkdir -p generated-project/.github/workflows
-  cat > generated-project/.github/workflows/deploy-pages.yml <<'YAML'
-name: Build and deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: .
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - uses: actions/deploy-pages@v4
-YAML
-fi
 
 cd generated-project
 git init
+touch .nojekyll
 git config user.name "CodePilot"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git checkout -b main
