@@ -111,6 +111,27 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <p>GitHub Pages هو الواجهة فقط. GitHub Actions هو محرك التنفيذ، وGitHub App هو طبقة المصادقة. لا توجد Vercel ولا <code>/api/*</code> ولا Personal Access Token داخل الصفحة.</p>
 </div>
 </main>
-<script src="./main.js?v=20260922-stable"></script>
+<script>
+(async function(){
+  try{
+    if("serviceWorker" in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if("caches" in window){
+      const keys=await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+  }catch(_){}
+  const s=document.createElement("script");
+  s.src="./main.js?v=20260922-recovery3";
+  s.onload=function(){document.documentElement.dataset.codepilotBoot="ok";};
+  s.onerror=function(){
+    const el=document.getElementById("status");
+    if(el){el.textContent="فشل تحميل محرك CodePilot2 (main.js).";el.className="status err";}
+  };
+  document.body.appendChild(s);
+})();
+</script>
 </body>
 </html>
