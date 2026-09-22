@@ -179,7 +179,7 @@ async function loadRepository(){
   for(const item of candidates){
    if(item.size>300000)continue;
    const raw="https://raw.githubusercontent.com/"+parsed.owner+"/"+parsed.repo+"/"+encodeURIComponent(branch)+"/"+item.path.split("/").map(encodeURIComponent).join("/");
-   const r=await fetch(raw);
+   const r=await fetch(raw,{cache:"no-store"});
    if(!r.ok)continue;
    const content=await r.text();
    if(content.includes("\u0000"))continue;
