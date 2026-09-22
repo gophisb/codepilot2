@@ -440,7 +440,7 @@ function buildPreview(){
    if(/\btype\s*=\s*["']module["']/i.test(attrs)){
      const url=makeModuleUrl(key,[]);
      if(url){
-       return "<script type=\"module\" data-codepilot-preview>\nimport "+url+";\n</script>";
+       return "<script type=\"module\" data-codepilot-preview>\nimport \""+url+"\";\n</script>";
      }
    }
    js=js.replace(/<\/script/gi,"<\\/script");
