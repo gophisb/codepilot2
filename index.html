@@ -344,19 +344,40 @@ function showFile(index){
  currentFileIndex=Number(index)||0;const f=generatedFiles[currentFileIndex];if(!f)return;
  q("codeView").value=f.content;q("fileInfo").textContent=f.path+" — "+f.content.length+" حرف";
 }
-function normalizePath(p){return p.replace(/^\.\//,"").replace(/^\//,"");}
+function normalizePath(p){return p.replace(/\\/g,"/").replace(/^\.\//,"").replace(/^\//,"");}
+function resolvePreviewPath(baseFile,assetPath){
+ const raw=assetPath.split("?")[0].split("#")[0].trim();
+ if(!raw||/^(https?:|data:|blob:|javascript:|#)/i.test(raw))return null;
+ const base=normalizePath(baseFile).split("/");
+ base.pop();
+ for(const part of normalizePath(raw).split("/")){
+   if(!part||part===".")continue;
+   if(part==="..")base.pop();else base.push(part);
+ }
+ return normalizePath(base.join("/"));
+}
 function buildPreview(){
+ const frame=q("preview");
  const htmlFile=generatedFiles.find(f=>normalizePath(f.path)==="index.html"||normalizePath(f.path).endsWith("/index.html"));
- if(!htmlFile){q("preview").srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";return;}
+ if(!htmlFile){
+   frame.srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";
+   return;
+ }
  const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
  let html=htmlFile.content;
  html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
-   const f=map.get(normalizePath(p).split("?")[0]);return f?"<style>\n"+f.content+"\n</style>":m;
+   const key=resolvePreviewPath(htmlFile.path,p);
+   const f=key&&map.get(key);
+   return f?"<style data-codepilot-preview>\n"+f.content+"\n</style>":m;
  });
  html=html.replace(/<script([^>]*?)src=["']([^"']+\.js)(?:\?[^"']*)?["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
-   const f=map.get(normalizePath(p).split("?")[0]);return f?"<script>\n"+f.content+"\n<\/script>":m;
+   const key=resolvePreviewPath(htmlFile.path,p);
+   const f=key&&map.get(key);
+   return f?"<script"+(c||"")+" data-codepilot-preview>\n"+f.content+"\n<\/script>":m;
  });
- q("preview").srcdoc=html;
+ const bridge="<script>window.addEventListener('error',function(e){document.body.insertAdjacentHTML('afterbegin','<pre style="white-space:pre-wrap;background:#fee;color:#900;padding:12px;font:14px system-ui">CodePilot Preview Error: '+String(e.message||e.error||e).replace(/[&<>]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x]})+'</pre>');});<\/script>";
+ html=html.replace(/<head([^>]*)>/i,"<head$1>"+bridge);
+ frame.srcdoc=html;
 }
 function safeRepoUrl(value){
  try{
@@ -374,7 +395,7 @@ function safeRepoUrl(value){
 
   // Also accept the public GitHub Pages URL:
   // https://OWNER.github.io/REPO
-  const m=u.hostname.match(/^([a-z0-9-]+)\\.github\\.io$/i);
+  const m=u.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
   if(m){
     const parts=u.pathname.split("/").filter(Boolean);
     if(parts.length<1)return null;
