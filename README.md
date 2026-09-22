@@ -1,10 +1,15 @@
 # CodePilot2
 
-مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، بدون الاعتماد على Vercel.
+مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، مع مسار مباشر اختياري عبر Vercel API ومسار GitHub Actions مستقل.
 
 ## المعمارية الحالية
 
-الهاتف → GitHub Actions → مزود الذكاء الاصطناعي → مستودع GitHub مستقل باسم المشروع
+يوجد مساران مستقلان:
+
+- **التوليد المباشر:** الواجهة → `/api/generate` على Vercel → مزود الذكاء الاصطناعي → عرض الملفات والمعاينة داخل CodePilot2.
+- **التوليد الكامل عبر Actions:** الهاتف → GitHub Actions → مزود الذكاء الاصطناعي → مستودع GitHub مستقل باسم المشروع.
+
+مسار Actions لم يُحذف، ومسار المعاينة لا يعدّل `main`.
 
 الواجهة موجودة على GitHub Pages، بينما التوليد والتنفيذ الحساس يعملان داخل GitHub Actions. كل مشروع مولّد يذهب إلى مستودع مستقل، ولا يتم تعديل `main` في CodePilot2.
 
@@ -54,9 +59,13 @@ https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml
 - الملفات الناتجة: داخل `test-clock`
 - CodePilot2: يبقى سليماً ولا يستقبل ملفات المشروع المولّد.
 
-## لماذا أزلنا Vercel؟
+## إعداد التوليد المباشر على Vercel
 
-GitHub Pages خدمة ثابتة، وملفات `/api/*.js` السابقة كانت تعتمد على Vercel Serverless Functions. لذلك نقلنا التنفيذ الحساس إلى GitHub Actions بدلاً من وضع مفاتيح API في المتصفح.
+إذا كان نطاق `codepilot2.vercel.app` مرتبطاً بهذا المستودع، يجب إضافة مفتاح مزود واحد على الأقل في **Vercel → Project → Settings → Environment Variables** باسم أحد المتغيرات: `GEMINI_API_KEY` أو `DEEPSEEK_API_KEY` أو `OPENAI_API_KEY` أو `OPENROUTER_API_KEY`، ثم إعادة النشر.
+
+المسار `/api/health` لا يعرض المفاتيح نفسها؛ يعرض فقط أسماء المزودات التي تم إعدادها، لتسهيل تشخيص سبب عدم عمل التوليد.
+
+Gemini الافتراضي الحالي هو `gemini-3.8-flash`. أما OpenRouter فيستخدم `openrouter/free` في مسار Actions، وهو موجّه رسمي للنماذج المجانية.
 
 ## الأمان
 
