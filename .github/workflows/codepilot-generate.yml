@@ -80,36 +80,71 @@ jobs:
             req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json",**headers},method="POST")
             try:
               with urllib.request.urlopen(req,timeout=180) as r:return json.loads(r.read().decode())
-            except urllib.error.HTTPError as e:raise SystemExit("AI HTTP error: "+e.read().decode("utf-8","replace")[:1000])
-          key=keys[p]
-          if p=="gemini":
+            except urllib.error.HTTPError as e:
+              raise RuntimeError("AI HTTP error: "+e.read().decode("utf-8","replace")[:1000])
+          def call_gemini():
+            key=keys["gemini"]
+            if not key: raise RuntimeError("GEMINI_API_KEY is missing")
             url="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key="+urllib.parse.quote(key)
             data=post(url,{"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.2,"maxOutputTokens":12000}}, {})
-            text="".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
-          else:
-            urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions","openrouter":"https://openrouter.ai/api/v1/chat/completions"}
+            try:
+              return "".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
+            except (KeyError,IndexError,TypeError) as e:
+              raise RuntimeError("Gemini returned an invalid response: "+str(e))
+
+          def call_openrouter():
+            key=keys["openrouter"]
+            if not key: raise RuntimeError("OPENROUTER_API_KEY is missing")
+            models_list=[
+              "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
+              "poolside/laguna-s-2.1:free",
+              "inclusionai/ling-3.0-flash:free",
+              "nvidia/nemotron-3.5-lightning:free"
+            ]
+            data=post("https://openrouter.ai/api/v1/chat/completions",{
+              "model":models_list[0],
+              "models":models_list,
+              "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+              "temperature":0.2,
+              "max_tokens":12000
+            },{
+              "Authorization":"Bearer "+key,
+              "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
+              "X-Title":"CodePilot2"
+            })
+            try:
+              return data["choices"][0]["message"]["content"]
+            except (KeyError,IndexError,TypeError) as e:
+              raise RuntimeError("OpenRouter returned an invalid response: "+str(e))
+
+          def call_chat(name):
+            key=keys.get(name)
+            if not key: raise RuntimeError(name.upper()+"_API_KEY is missing")
+            urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions"}
             models={"deepseek":"deepseek-chat","openai":"gpt-4o"}
-            if p=="openrouter":
-              models_list=[
-                "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
-                "poolside/laguna-s-2.1:free",
-                "inclusionai/ling-3.0-flash:free",
-                "nvidia/nemotron-3.5-lightning:free"
-              ]
-              data=post(urls[p],{
-                "model":models_list[0],
-                "models":models_list,
-                "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-                "temperature":0.2,
-                "max_tokens":12000
-              },{
-                "Authorization":"Bearer "+key,
-                "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
-                "X-Title":"CodePilot2"
-              })
-            else:
-              data=post(urls[p],{"model":models[p],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
-            text=data["choices"][0]["message"]["content"]
+            data=post(urls[name],{"model":models[name],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
+            try:
+              return data["choices"][0]["message"]["content"]
+            except (KeyError,IndexError,TypeError) as e:
+              raise RuntimeError(name+" returned an invalid response: "+str(e))
+
+          if p=="gemini":
+            try:
+              text=call_gemini()
+              print("AI provider succeeded: Gemini 3.5 Flash")
+            except Exception as gemini_error:
+              print("Gemini failed; attempting OpenRouter fallback: "+str(gemini_error)[:500])
+              try:
+                text=call_openrouter()
+                print("AI provider succeeded: OpenRouter fallback")
+              except Exception as openrouter_error:
+                raise SystemExit("Gemini failed and OpenRouter fallback also failed. Gemini: "+str(gemini_error)[:500]+" | OpenRouter: "+str(openrouter_error)[:500])
+          elif p=="openrouter":
+            text=call_openrouter()
+            print("AI provider succeeded: OpenRouter")
+          else:
+            text=call_chat(p)
+            print("AI provider succeeded: "+p)
           a,b=text.find("{"),text.rfind("}")
           if a<0 or b<=a:raise SystemExit("Model did not return valid JSON")
           result=json.loads(text[a:b+1]); files=result.get("files")
