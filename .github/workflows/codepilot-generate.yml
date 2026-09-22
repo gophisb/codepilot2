@@ -1,3 +1,5 @@
+run-name: "CodePilot: ${{ inputs.project }} [${{ inputs.request_id }}]"
+
 name: CodePilot - Generate Project
 
 on:
@@ -24,13 +26,18 @@ on:
         default: "Web / PWA"
         type: string
       project:
-        description: "اسم المشروع"
+        description: "اسم المستودع الجديد للمشروع"
         required: true
-        default: "مشروعي"
+        default: "my-codepilot-app"
+        type: string
+      request_id:
+        description: "معرف طلب التوليد"
+        required: true
+        default: "manual"
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   generate:
@@ -41,66 +48,333 @@ jobs:
       STACK: ${{ inputs.stack }}
       PLATFORM: ${{ inputs.platform }}
       PROJECT: ${{ inputs.project }}
+      REQUEST_ID: ${{ inputs.request_id }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
-      - name: Generate project
+
+      - name: Validate inputs
         run: |
           python3 - <<'PY'
-          import os,json,urllib.request,urllib.parse,urllib.error,pathlib,re,shutil
-          p=os.environ["PROVIDER"].strip().lower()
+          import os,re
+          project=os.environ["PROJECT"].strip()
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", project):
+              raise SystemExit("Invalid GitHub repository name: "+project)
+          if not os.environ.get("GH_REPO_TOKEN"):
+              raise SystemExit("Missing GH_REPO_TOKEN")
+          PY
+
+      - name: Generate project with AI
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.parse,urllib.error,pathlib,re,shutil,time
+
+          provider=os.environ["PROVIDER"].strip().lower()
           prompt=os.environ["PROMPT"].strip()
           stack=os.environ["STACK"].strip()
           platform=os.environ["PLATFORM"].strip()
           project=os.environ["PROJECT"].strip()
-          keys={"gemini":os.environ.get("GEMINI_API_KEY",""),"deepseek":os.environ.get("DEEPSEEK_API_KEY",""),"openai":os.environ.get("OPENAI_API_KEY",""),"openrouter":os.environ.get("OPENROUTER_API_KEY","")}
-          if not keys.get(p): raise SystemExit("API key missing for selected provider")
+          keys={
+            "gemini":os.environ.get("GEMINI_API_KEY",""),
+            "deepseek":os.environ.get("DEEPSEEK_API_KEY",""),
+            "openai":os.environ.get("OPENAI_API_KEY",""),
+            "openrouter":os.environ.get("OPENROUTER_API_KEY","")
+          }
+
           system="""You are CodePilot, an engineering agent that builds runnable software.
-          Return JSON only: {"files":[{"path":"relative/path","content":"full file content"}],"summary":"short summary"}.
+          Return ONLY JSON matching this exact shape:
+          {"files":[{"path":"relative/path","content":"full file content"}],"summary":"short summary"}.
           Generate a complete runnable project. Use safe relative paths. Never include secrets.
-          Avoid unnecessary dependencies. Respect the requested stack and platform."""
+          Do not create .github files. Avoid unnecessary dependencies. Respect the requested stack and platform.
+          For web/PWA projects, include a complete index.html and all required local CSS/JS files.\n          Keep generated projects compact: prefer 4-12 files and avoid unnecessarily large source files.
+          """
+
           user=f"Request: {prompt}\nStack: {stack}\nPlatform: {platform}\nProject: {project}"
+
           def post(url,payload,headers):
-            req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json",**headers},method="POST")
+            req=urllib.request.Request(
+              url,
+              data=json.dumps(payload).encode(),
+              headers={"Content-Type":"application/json","Accept":"application/json",**headers},
+              method="POST"
+            )
             try:
-              with urllib.request.urlopen(req,timeout=180) as r:return json.loads(r.read().decode())
-            except urllib.error.HTTPError as e:raise SystemExit("AI HTTP error: "+e.read().decode("utf-8","replace")[:1000])
-          key=keys[p]
-          if p=="gemini":
-            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+urllib.parse.quote(key)
-            data=post(url,{"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.2,"maxOutputTokens":12000}}, {})
-            text="".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
+              with urllib.request.urlopen(req,timeout=180) as r:
+                return json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+              body=e.read().decode("utf-8","replace")
+              raise RuntimeError(f"HTTP {e.code}: {body[:1500]}")
+            except Exception as e:
+              raise RuntimeError(str(e))
+
+          def call_gemini():
+            key=keys["gemini"]
+            if not key: raise RuntimeError("GEMINI_API_KEY is missing")
+            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+            schema={
+              "type":"OBJECT",
+              "properties":{
+                "files":{
+                  "type":"ARRAY",
+                  "items":{
+                    "type":"OBJECT",
+                    "properties":{"path":{"type":"STRING"},"content":{"type":"STRING"}},
+                    "required":["path","content"]
+                  }
+                },
+                "summary":{"type":"STRING"}
+              },
+              "required":["files","summary"]
+            }
+            payload={
+              "systemInstruction":{"parts":[{"text":system}]},
+              "contents":[{"role":"user","parts":[{"text":user}]}],
+              "generationConfig":{
+                "responseMimeType":"application/json",
+                "responseSchema":schema,
+                "maxOutputTokens":16000,
+                "thinkingConfig":{"thinkingLevel":"medium"}
+              }
+            }
+            data=post(url,payload,{"x-goog-api-key":key})
+            try:
+              return data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError,IndexError,TypeError) as e:
+              raise RuntimeError("Gemini returned no usable candidate: "+str(e))
+
+          def call_openrouter():
+            key=keys["openrouter"]
+            if not key: raise RuntimeError("OPENROUTER_API_KEY is missing")
+            last=None
+            for attempt in range(1,4):
+              try:
+                data=post("https://openrouter.ai/api/v1/chat/completions",{
+                  "model":"openrouter/free",
+                  "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+                  "temperature":0.1,
+                  "max_tokens":16000
+                },{
+                  "Authorization":"Bearer "+key,
+                  "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
+                  "X-Title":"CodePilot2-gophisb"
+                })
+                content=data["choices"][0]["message"]["content"]
+                if not isinstance(content,str) or not content.strip():
+                  raise RuntimeError("OpenRouter returned empty content")
+                finish=(data.get("choices",[{}])[0].get("finish_reason") or "").lower()
+                if finish in ("length","max_tokens"):
+                  raise RuntimeError("OpenRouter output was truncated (finish_reason="+finish+")")
+                return content
+              except Exception as e:
+                last=e
+                print(f"OpenRouter attempt {attempt}/3 failed: {str(e)[:900]}")
+                if attempt<3:
+                  time.sleep(4*attempt)
+            raise RuntimeError("OpenRouter failed after 3 attempts: "+str(last))
+
+          def call_chat(name):
+            key=keys.get(name)
+            if not key: raise RuntimeError(name.upper()+"_API_KEY is missing")
+            urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions"}
+            models={"deepseek":"deepseek-chat","openai":"gpt-4o"}
+            data=post(urls[name],{
+              "model":models[name],
+              "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+              "temperature":0.1,"max_tokens":16000
+            },{"Authorization":"Bearer "+key})
+            try:return data["choices"][0]["message"]["content"]
+            except (KeyError,IndexError,TypeError) as e:raise RuntimeError(name+" invalid response: "+str(e))
+
+          if provider=="gemini":
+            text=None
+            first=None
+            for attempt in range(1,3):
+              try:
+                text=call_gemini()
+                used_model="gemini-3.8-flash"
+                break
+              except Exception as e:
+                first=e
+                print(f"Gemini attempt {attempt}/2 failed: {str(e)[:900]}")
+                if attempt<2:
+                  time.sleep(5)
+            if text is None:
+              print("Gemini unavailable; trying OpenRouter fallback: "+str(first)[:900])
+              text=call_openrouter()
+              used_model="openrouter/free"
+          elif provider=="openrouter":
+            text=call_openrouter();used_model="openrouter/free"
+          elif provider in ("deepseek","openai"):
+            text=call_chat(provider);used_model={"deepseek":"deepseek-chat","openai":"gpt-4o"}[provider]
           else:
-            urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions","openrouter":"https://openrouter.ai/api/v1/chat/completions"}
-            models={"deepseek":"deepseek-chat","openai":"gpt-4o","openrouter":"openai/gpt-4o"}
-            data=post(urls[p],{"model":models[p],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
-            text=data["choices"][0]["message"]["content"]
-          a,b=text.find("{"),text.rfind("}")
-          if a<0 or b<=a:raise SystemExit("Model did not return valid JSON")
-          result=json.loads(text[a:b+1]); files=result.get("files")
-          if not isinstance(files,list) or not 1<=len(files)<=40:raise SystemExit("Invalid file count")
+            raise SystemExit("Unsupported provider: "+provider)
+
+          def parse_model_json(raw):
+            if not isinstance(raw,str) or not raw.strip():
+              raise SystemExit("Model returned empty output")
+            cleaned=raw.strip()
+            if cleaned.startswith("\\`\\`\\`"):
+              cleaned=re.sub(r"^\\`\\`\\`(?:json)?\\s*", "", cleaned, flags=re.IGNORECASE)
+              cleaned=re.sub(r"\\s*\\`\\`\\`$", "", cleaned)
+            candidates=[cleaned]
+            a,b=cleaned.find("{"),cleaned.rfind("}")
+            if a>=0 and b>a:
+              candidates.append(cleaned[a:b+1])
+            last=None
+            for candidate in candidates:
+              try:
+                return json.loads(candidate, strict=False)
+              except json.JSONDecodeError as e:
+                last=e
+            raise SystemExit("Model returned invalid JSON: "+str(last))
+
+          result=parse_model_json(text)
+
+          files=result.get("files")
+          if not isinstance(files,list) or not 1<=len(files)<=40:
+            raise SystemExit("Invalid file count")
           root=pathlib.Path("generated-project")
           if root.exists():shutil.rmtree(root)
           root.mkdir()
+
           for item in files:
-            path=str(item.get("path","")); content=str(item.get("content",""))
-            if not re.fullmatch(r"[A-Za-z0-9._/-]+",path) or path.startswith("/") or ".." in path or path==".github" or path.startswith(".github/") or len(path)>240:raise SystemExit("Invalid file path: "+path)
-            target=root/path; target.parent.mkdir(parents=True,exist_ok=True); target.write_text(content,encoding="utf-8")
-          pathlib.Path("generation-summary.md").write_text("# CodePilot\n\n"+str(result.get("summary",""))+"\n",encoding="utf-8")
+            if not isinstance(item,dict): raise SystemExit("Invalid file entry")
+            path=str(item.get("path",""))
+            content=item.get("content","")
+            if not isinstance(content,str): raise SystemExit("File content must be text")
+            if not re.fullmatch(r"[A-Za-z0-9._/-]+",path) or path.startswith("/") or ".." in path or path in (".github",".git") or path.startswith(".github/") or path.startswith(".git/") or len(path)>240:
+              raise SystemExit("Invalid file path: "+path)
+            if len(content)>800000: raise SystemExit("File too large: "+path)
+            target=root/path
+            target.parent.mkdir(parents=True,exist_ok=True)
+            target.write_text(content,encoding="utf-8")
+
+          pathlib.Path("generation-summary.md").write_text(
+            "# CodePilot2-gophisb generation\n\nProvider: "+used_model+"\n\n"+str(result.get("summary",""))+"\n",
+            encoding="utf-8"
+          )
+          pathlib.Path("generation-meta.json").write_text(json.dumps({
+            "project":project,"provider":provider,"model":used_model,"stack":stack,"platform":platform,
+            "file_count":len(files)
+          },ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          print("Generated",len(files),"files with",used_model)
           PY
-      - name: Publish generated project
+
+      - name: Validate generated project
         run: |
+          test -f generated-project/index.html || true
+          python3 - <<'PY'
+          import pathlib
+          root=pathlib.Path("generated-project")
+          files=list(root.rglob("*"))
+          if not any(p.is_file() for p in files):
+              raise SystemExit("Generated project is empty")
+          print("Validation passed:",sum(p.is_file() for p in files),"files")
+          PY
+
+      - name: Package generated project
+        run: |
+          cd generated-project
+          zip -qr ../codepilot-generated-project.zip .
+          cd ..
+          printf '%s\n' "# CodePilot2-gophisb generation" "" "Project: $PROJECT" "Provider: $PROVIDER" "Stack: $STACK" "Platform: $PLATFORM" > codepilot-result.txt
+
+      - name: Upload generated files artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codepilot-${{ inputs.project }}
+          path: |
+            codepilot-generated-project.zip
+            codepilot-result.txt
+            generation-summary.md
+            generation-meta.json
+          if-no-files-found: error
+
+      - name: Create independent GitHub repository
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,urllib.parse,pathlib
+          token=os.environ["GH_TOKEN"]
+          project=os.environ["PROJECT"].strip()
+          def request(method,url,payload=None):
+            headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+token,"X-GitHub-Api-Version":"2026-03-10"}
+            data=json.dumps(payload).encode() if payload is not None else None
+            req=urllib.request.Request(url,data=data,headers=headers,method=method)
+            try:
+              with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+              body=e.read().decode("utf-8","replace")
+              raise SystemExit(f"GitHub API error {e.code}: {body[:1600]}")
+          # Never overwrite an existing repository. If the requested name is already taken,
+          # choose the next available deterministic name (project-2, project-3, ...).
+          base=project
+          candidate=base
+          suffix=2
+          owner=request("GET","https://api.github.com/user")["login"]
+          while True:
+            try:
+              request("GET","https://api.github.com/repos/"+urllib.parse.quote(owner,safe="")+"/"+urllib.parse.quote(candidate,safe=""))
+              candidate=f"{base}-{suffix}"
+              suffix+=1
+              if len(candidate)>100:
+                trimmed=base[:100-len(str(suffix))-1].rstrip("-._")
+                candidate=trimmed+"-"+str(suffix)
+            except SystemExit as ex:
+              if "GitHub API error 404:" in str(ex):
+                break
+              raise
+          repo=request("POST","https://api.github.com/user/repos",{
+            "name":candidate,
+            "description":"Generated by CodePilot2-gophisb",
+            "private":False,
+            "has_issues":True,
+            "has_projects":False,
+            "has_wiki":False
+          })
+          print("Requested repository: "+project)
+          print("Created repository: "+repo["html_url"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+            f.write("## CodePilot2-gophisb result\n\n")
+            f.write("**Requested name:** `"+project+"`\n\n")
+            if candidate != project:
+              f.write("**Name already existed; created safely as:** `"+candidate+"`\n\n")
+            f.write("**Repository:** "+repo["html_url"]+"\n\n")
+            f.write("**Load into CodePilot2-gophisb:** paste the repository URL into the loader.\n")
+          pathlib.Path("target_repo.txt").write_text(repo["clone_url"],encoding="utf-8")
+
+      - name: Publish project to new repository
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
           git config user.name "CodePilot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          BRANCH="codepilot/run-$GITHUB_RUN_ID"
-          git checkout -b "$BRANCH"
-          cp -R generated-project/. .
-          rm -rf generated-project
+          CLONE_URL="$(cat target_repo.txt)"
+          echo "Target repository: $CLONE_URL"
+
+          # Authenticate Git using the same token that created the target repository.
+          # This avoids relying on an HTTP extra-header being accepted by Git's HTTPS transport.
+          gh auth setup-git
+
+          cd generated-project
+          git init
+          git checkout -b main
           git add .
-          git commit -m "CodePilot: generate project $GITHUB_RUN_ID"
-          git push origin "$BRANCH"
-          echo "Generated branch: $BRANCH" >> "$GITHUB_STEP_SUMMARY"
-          echo "main was not modified." >> "$GITHUB_STEP_SUMMARY"
+          git commit -m "CodePilot: initial project"
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "$CLONE_URL"
+
+          # The new repository is intentionally empty, so publish the generated
+          # commit explicitly as the target default branch.
+          git push --set-upstream origin HEAD:main
+
+          cd ..
+          echo "Published project repository: $CLONE_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "CodePilot2-gophisb main was not modified." >> "$GITHUB_STEP_SUMMARY"
