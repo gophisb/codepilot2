@@ -318,14 +318,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
-          set -e
+          set -euo pipefail
           git config user.name "CodePilot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           CLONE_URL="$(cat target_repo.txt)"
-          git -C generated-project init -b main
-          git -C generated-project add .
-          git -C generated-project commit -m "CodePilot: initial project"
-          git -C generated-project remote add origin "$CLONE_URL"
-          git -C generated-project -c http.extraheader="AUTHORIZATION: bearer $GH_TOKEN" push -u origin main
+          echo "Target repository: $CLONE_URL"
+
+          # Authenticate Git using the same token that created the target repository.
+          # This avoids relying on an HTTP extra-header being accepted by Git's HTTPS transport.
+          gh auth setup-git
+
+          cd generated-project
+          git init
+          git checkout -b main
+          git add .
+          git commit -m "CodePilot: initial project"
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "$CLONE_URL"
+
+          # The new repository is intentionally empty, so publish the generated
+          # commit explicitly as the target default branch.
+          git push --set-upstream origin HEAD:main
+
+          cd ..
           echo "Published project repository: $CLONE_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "CodePilot2-gophisb main was not modified." >> "$GITHUB_STEP_SUMMARY"
