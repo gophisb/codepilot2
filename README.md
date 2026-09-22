@@ -35,14 +35,14 @@ codepilot/
 ```
 
 
-## GitHub Integration — المرحلة 1
+## GitHub Integration
 
 CodePilot2 now includes a simple GitHub connection foundation:
 - OAuth login from the app
 - Encrypted HttpOnly session cookie
 - CSRF state validation
-- Read-only repository listing in the UI
-- No GitHub token is stored in the browser localStorage
+- Repository listing and controlled project writing
+- GitHub access token stays server-side in an encrypted HttpOnly session cookie
 
 ### Vercel environment variables
 
@@ -58,4 +58,25 @@ Create a GitHub OAuth App and set its callback URL to:
 
 For local development, use the matching local callback URL.
 
-The next stage will add repository selection and controlled file writing. Until then, GitHub integration remains read-only.
+### Current flow
+1. Sign in with GitHub.
+2. Select a repository.
+3. Use **بناء** to generate complete project files with the selected AI provider.
+4. Upload the generated files to a new `codepilot/<timestamp>` branch.
+5. `main` is not modified by CodePilot.
+
+### Important
+The AI keys and GitHub OAuth variables must be configured in the **Vercel runtime**. GitHub Actions Secrets do not automatically become Vercel runtime environment variables.
+
+Required for GitHub login:
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `GITHUB_SESSION_SECRET`
+
+Required for AI generation (at least one provider):
+- `GEMINI_API_KEY`, or
+- `DEEPSEEK_API_KEY`, or
+- `OPENAI_API_KEY`, or
+- `OPENROUTER_API_KEY`
+
+After changing Vercel environment variables, redeploy the project so the new runtime values are loaded.
