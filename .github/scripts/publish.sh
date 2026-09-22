@@ -35,7 +35,7 @@ printf "https://github.com/%s/%s
 " "$owner" "$candidate" > target-repo.txt
 
 if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
-  gh api --method POST "repos/$owner/$candidate/pages"     -f build_type=workflow -f "source[branch]=main" -f "source[path]=/"     >/dev/null 2>&1 || true
+  gh api --method POST "repos/$owner/$candidate/pages"     -f build_type=legacy -f "source[branch]=main" -f "source[path]=/"     >/dev/null 2>&1 || true
   printf "https://%s.github.io/%s/
 " "$owner" "$candidate" > pages-url.txt
 fi
