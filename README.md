@@ -1,84 +1,89 @@
 # CodePilot2
 
-مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، مع مسار مباشر اختياري عبر Vercel API ومسار GitHub Actions مستقل.
+مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، يعمل الآن بهندسة **GitHub-only**.
 
-## المعمارية الحالية
+## المعمارية
 
-يوجد مساران مستقلان:
+`الهاتف → GitHub Pages → GitHub Actions → مزود AI → مستودع GitHub مستقل`
 
-- **التوليد المباشر:** الواجهة → `/api/generate` على Vercel → مزود الذكاء الاصطناعي → عرض الملفات والمعاينة داخل CodePilot2.
-- **التوليد الكامل عبر Actions:** الهاتف → GitHub Actions → مزود الذكاء الاصطناعي → مستودع GitHub مستقل باسم المشروع.
+- GitHub Pages: واجهة ثابتة فقط.
+- GitHub Actions: التنفيذ، استدعاء مزود AI، والتحقق، وإنشاء المستودع.
+- AI/GitHub secrets: تبقى داخل GitHub Actions Secrets.
+- كل مشروع مولّد يذهب إلى مستودع مستقل.
+- لا يتم تعديل `main` في CodePilot2 أثناء التوليد.
 
-مسار Actions لم يُحذف، ومسار المعاينة لا يعدّل `main`.
+### لماذا لا يوجد /api؟
 
-الواجهة موجودة على GitHub Pages، بينما التوليد والتنفيذ الحساس يعملان داخل GitHub Actions. كل مشروع مولّد يذهب إلى مستودع مستقل، ولا يتم تعديل `main` في CodePilot2.
+GitHub Pages لا يشغّل Node.js أو Python كـ Backend. لذلك كانت محاولة الواجهة السابقة لاستدعاء `/api/generate` معمارياً غير صحيحة. وجود ملف JavaScript داخل المستودع لا يحوله إلى API على GitHub Pages.
 
-## التشغيل
+لذلك أزيل مسار Vercel/API من CodePilot2، وأصبح GitHub Actions هو مسار التنفيذ الوحيد.
 
-1. افتح تبويب **Actions** في المستودع.
-2. اختر **CodePilot - Generate Project**.
-3. اضغط **Run workflow**.
-4. اكتب وصف التطبيق.
-5. اختر مزود الذكاء الاصطناعي والتقنية والمنصة.
-6. اكتب اسم المستودع الجديد، مثل `test-clock`.
-7. شغّل الـ workflow.
-8. سيولد CodePilot الملفات ثم ينشئ مستودعاً مستقلاً باسم المشروع ويضع الملفات فيه.
-9. `main` في CodePilot2 لا يتم تعديله.
+## الاستخدام من الهاتف
 
-رابط التشغيل:
-https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml
+1. افتح CodePilot2 على GitHub Pages.
+2. اكتب فكرة التطبيق.
+3. اختر المزود والتقنية والمنصة واسم المشروع.
+4. اضغط **توليد المشروع الآن**.
+5. سيُنسخ طلب التوليد ويفتح GitHub Actions.
+6. اختر **CodePilot - Generate Project** ثم **Run workflow**.
+7. الصق وصف التطبيق في خانة `prompt` واضبط الخيارات.
+8. شغّل الـ workflow.
+9. بعد نجاحه سيظهر رابط المستودع الجديد في ملخص التشغيل، وستوجد ملفات المشروع أيضاً كـ Artifact.
 
-## مفاتيح الذكاء الاصطناعي
+هذا الفصل بين الواجهة والتنفيذ مقصود لأسباب أمنية: لا نضع `GH_REPO_TOKEN` أو مفاتيح AI في JavaScript المنشور.
 
-أضف مفتاح مزود الذكاء الاصطناعي من:
-**Settings → Secrets and variables → Actions → New repository secret**
+## GitHub Actions
 
-يمكن استخدام واحد من:
+الملف الرئيسي:
+
+`.github/workflows/codepilot-generate.yml`
+
+يدعم:
+
+- Gemini
+- DeepSeek
+- OpenAI
+- OpenRouter
+
+ويستخدم `workflow_dispatch` مع مدخلات `prompt`, `provider`, `stack`, `platform`, `project`.
+
+## Secrets
+
+أضف المفاتيح من:
+
+**Settings → Secrets and variables → Actions**
+
+يمكن استخدام:
+
 - `GEMINI_API_KEY`
 - `DEEPSEEK_API_KEY`
 - `OPENAI_API_KEY`
 - `OPENROUTER_API_KEY`
+- `GH_REPO_TOKEN`
 
-ولا تضع أي مفتاح داخل الكود أو داخل GitHub Pages.
+لا تضع أي مفتاح داخل الواجهة أو في المستودع.
 
-## صلاحية إنشاء المستودعات
+## Gemini
 
-لإنشاء مستودع مستقل تلقائياً، أضف سراً باسم:
+الموديل الحالي في Actions هو `gemini-3.8-flash`. وهو اسم موديل مستقر موثق في قائمة نماذج Gemini API الحالية. citeturn1search10
 
-`GH_REPO_TOKEN`
+## OpenRouter
 
-استخدم Fine-grained Personal Access Token لحساب GitHub نفسه، مع صلاحية **Administration: Read and write** لإنشاء مستودع جديد، وفق متطلبات GitHub الحالية.
-
-لا تضع هذا الرمز داخل المحادثة أو الكود. ضعه فقط في **GitHub Actions Secrets**.
+يستخدم workflow موجّه `openrouter/free` بدلاً من تثبيت معرف نموذج مجاني قد يتغير أو يتوقف.
 
 ## النتيجة
 
 مثال:
+
 - اسم المشروع: `test-clock`
 - النتيجة: مستودع مستقل `gophisb/test-clock`
-- الملفات الناتجة: داخل `test-clock`
 - CodePilot2: يبقى سليماً ولا يستقبل ملفات المشروع المولّد.
 
-## إعداد التوليد المباشر على Vercel
+## مراجع هندسية مفتوحة المصدر
 
-إذا كان نطاق `codepilot2.vercel.app` مرتبطاً بهذا المستودع، يجب إضافة مفتاح مزود واحد على الأقل في **Vercel → Project → Settings → Environment Variables** باسم أحد المتغيرات: `GEMINI_API_KEY` أو `DEEPSEEK_API_KEY` أو `OPENAI_API_KEY` أو `OPENROUTER_API_KEY`، ثم إعادة النشر.
+راجعنا مشاريع مفتوحة المصدر مشابهة للاستفادة من الأنماط الهندسية، لا لنسخها:
 
-المسار `/api/health` لا يعرض المفاتيح نفسها؛ يعرض فقط أسماء المزودات التي تم إعدادها، لتسهيل تشخيص سبب عدم عمل التوليد.
+- Open Builder: مولّد تطبيقات AI مفتوح المصدر مع live preview وبنية GitHub Pages/Actions. urlOpen Builder على GitHubhttps://github.com/Amery2010/open-builder
+- OpenPage: بنية JSON-first مع معاينة مباشرة وتعديلات قابلة للتتبع. urlOpenPage على GitHubhttps://github.com/buildingopen/openpage
 
-Gemini الافتراضي الحالي هو `gemini-3.8-flash`. أما OpenRouter فيستخدم `openrouter/free` في مسار Actions، وهو موجّه رسمي للنماذج المجانية.
-
-## الأمان
-
-- مفاتيح AI وGitHub تبقى داخل GitHub Actions Secrets.
-- CodePilot2 `main` لا يتم تعديله أثناء توليد المشاريع.
-- كل تشغيل ينشئ مستودعاً مستقلاً.
-- اسم المستودع ومسارات الملفات الناتجة تُفحص.
-- لا توجد مفاتيح API في الواجهة.
-
-## المزودات
-
-يدعم workflow:
-- Google Gemini
-- DeepSeek
-- OpenAI
-- OpenRouter
+المبدأ الذي نأخذه منهما: فصل التوليد عن العرض، وإبقاء حالة المشروع قابلة للتتبع، بدلاً من محاولة تشغيل Backend داخل GitHub Pages.
