@@ -42,12 +42,12 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <div><label for="platform">المنصة</label><select id="platform"><option>Web / PWA</option><option>Android</option><option>iOS</option><option>Desktop</option><option>API / Backend</option></select></div>
 <div><label for="project">اسم المشروع</label><input id="project" value="my-codepilot-app" autocomplete="off"></div>
 </div>
-<button class="primary" id="githubLogin">ربط GitHub</button>
+<button class="primary" id="githubLogin">فتح GitHub</button>
 <div class="status" id="githubStatus">GitHub غير متصل.</div>
 <button class="primary" id="generate">توليد المشروع الآن عبر GitHub Actions</button>
 
 <div class="status" id="status">جاهز.</div>
-<p class="note">الأمان: لا توجد مفاتيح AI داخل الصفحة. تسجيل الدخول يتم عبر GitHub App، ثم تُرسل عملية التوليد إلى GitHub Actions بصلاحية Actions Write. رمز الدخول لا يُحفظ في المستودع.</p>
+<p class="note">الأمان: لا توجد مفاتيح AI داخل الصفحة ولا OAuth/PAT محفوظ فيها. عند التوليد يُفتح GitHub لإرسال Issue بحسابك، ثم يمرر GitHub Actions الطلب إلى Workflow باستخدام السر الموجود في المستودع.</p>
 <div id="deviceBox" class="status hidden"></div>
 </div>
 
@@ -108,7 +108,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 
 <div class="card">
 <h2>ملاحظة هندسية مهمة</h2>
-<p>GitHub Pages هو الواجهة فقط. GitHub Actions هو محرك التنفيذ، وGitHub App هو طبقة المصادقة. لا توجد Vercel ولا <code>/api/*</code> ولا Personal Access Token داخل الصفحة.</p>
+<p>GitHub Pages هو الواجهة فقط. GitHub Actions هو محرك التنفيذ، وجسر GitHub Issue هو طبقة التفويض من حسابك. لا توجد Vercel ولا <code>/api/*</code> ولا Personal Access Token داخل الصفحة.</p>
 </div>
 </main>
 <script>
