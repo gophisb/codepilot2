@@ -214,12 +214,26 @@ jobs:
           else:
             raise SystemExit("Unsupported provider: "+provider)
 
-          try:
-            result=json.loads(text)
-          except json.JSONDecodeError:
-            a,b=text.find("{"),text.rfind("}")
-            if a<0 or b<=a: raise SystemExit("Model did not return JSON")
-            result=json.loads(text[a:b+1])
+          def parse_model_json(raw):
+            if not isinstance(raw,str) or not raw.strip():
+              raise SystemExit("Model returned empty output")
+            cleaned=raw.strip()
+            if cleaned.startswith("\\`\\`\\`"):
+              cleaned=re.sub(r"^\\`\\`\\`(?:json)?\\s*", "", cleaned, flags=re.IGNORECASE)
+              cleaned=re.sub(r"\\s*\\`\\`\\`$", "", cleaned)
+            candidates=[cleaned]
+            a,b=cleaned.find("{"),cleaned.rfind("}")
+            if a>=0 and b>a:
+              candidates.append(cleaned[a:b+1])
+            last=None
+            for candidate in candidates:
+              try:
+                return json.loads(candidate, strict=False)
+              except json.JSONDecodeError as e:
+                last=e
+            raise SystemExit("Model returned invalid JSON: "+str(last))
+
+          result=parse_model_json(text)
 
           files=result.get("files")
           if not isinstance(files,list) or not 1<=len(files)<=40:
@@ -286,7 +300,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
           python3 - <<'PY'
-          import os,json,urllib.request,urllib.error
+          import os,json,urllib.request,urllib.error,pathlib
           token=os.environ["GH_TOKEN"]
           project=os.environ["PROJECT"].strip()
           def request(method,url,payload=None):
