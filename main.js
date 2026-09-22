@@ -380,30 +380,41 @@ function buildPreview(){
    frame.srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";
    return;
  }
+
  const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
  let html=htmlFile.content;
 
- // The preview runs from srcdoc, so relative files cannot be fetched from the
- // CodePilot2 site. Inline local CSS/JS into the preview instead.
- html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
+ // srcdoc has no real project directory. Make the preview self-contained.
+ html=html.replace(/<base\b[^>]*>/gi,"");
+
+ // Inline local CSS.
+ html=html.replace(/<link\b([^>]*?)\bhref=["']([^"']+)["']([^>]*)>/gi,(m,a,p,c)=>{
+   if(!/\.css(?:[?#].*)?$/i.test(p)) return m;
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
    return f ? "<style data-codepilot-preview>\n"+f.content+"\n</style>" : m;
  });
 
- html=html.replace(/<script([^>]*?)src=["']([^"']+\.js)(?:\?[^"']*)?["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
+ // Inline local JavaScript while preserving module semantics.
+ html=html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   if(!f)return m;
-   const attrs=(a+c).replace(/\s+type=["'][^"']*["']/gi,"").trim();
-   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\n"+f.content+"\n<\/script>";
+   if(!f) return m;
+   const attrs=(a+" "+c)
+     .replace(/\bsrc\s*=\s*["'][^"']*["']/gi,"")
+     .replace(/\s+/g," ")
+     .trim();
+   // Prevent a user JS closing tag from terminating the outer srcdoc parser.
+   const js=f.content.replace(/<\/script/gi,"<\\/script");
+   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\n"+js+"\n</script>";
  });
 
- // Never inject CodePilot2's own app.js into the user's project preview.
- // It belongs to the editor, not to the generated application.
- html=html.replace(/<base\\b[^>]*>/gi,"");
+ // Make runtime errors visible instead of leaving a silent white iframe.
+ const diagnostics="<script>(function(){window.addEventListener('error',function(e){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\\n'+(e.message||'Runtime error')+(e.lineno?'\\nline '+e.lineno:'');}catch(_){}});})();</script>";
+ html=html.replace(/<body\b([^>]*)>/i,"<body$1>"+diagnostics);
  frame.srcdoc=html;
 }
+
 function safeRepoUrl(value){
  try{
   // Accept a pasted GitHub link even when the user copied surrounding text,
