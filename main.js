@@ -385,18 +385,18 @@ function buildPreview(){
 
  // The preview runs from srcdoc, so relative files cannot be fetched from the
  // CodePilot2 site. Inline local CSS/JS into the preview instead.
- html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
+ html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   return f ? "<style data-codepilot-preview>\\n"+f.content+"\\n</style>" : m;
+   return f ? "<style data-codepilot-preview>\n"+f.content+"\n</style>" : m;
  });
 
- html=html.replace(/<script([^>]*?)src=["']([^"']+\\.js)(?:\\?[^"']*)?["']([^>]*)><\\/script>/gi,(m,a,p,c)=>{
+ html=html.replace(/<script([^>]*?)src=["']([^"']+\.js)(?:\?[^"']*)?["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
    if(!f)return m;
-   const attrs=(a+c).replace(/\\s+type=["'][^"']*["']/gi,"").trim();
-   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\\n"+f.content+"\\n<\\/script>";
+   const attrs=(a+c).replace(/\s+type=["'][^"']*["']/gi,"").trim();
+   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\n"+f.content+"\n<\/script>";
  });
 
  // Never inject CodePilot2's own app.js into the user's project preview.
