@@ -1,0 +1,70 @@
+name: CodePilot2 GitHub Bridge
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  bridge:
+    if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, 'CodePilot2:')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+    steps:
+      - name: Parse CodePilot2 request
+        run: |
+          python3 - <<'PY'
+          import os,re,base64
+          body=os.environ.get("ISSUE_BODY","")
+          m=re.search(r"<!-- CodePilot2 request\n(.*?)\n-->",body,re.S)
+          if not m: raise SystemExit("Not a CodePilot2 request issue.")
+          meta={}
+          for line in m.group(1).splitlines():
+              if "=" in line:
+                  k,v=line.split("=",1); meta[k.strip()]=v.strip()
+          required=["request_id","project","provider","stack","platform","prompt_b64"]
+          missing=[k for k in required if not meta.get(k)]
+          if missing: raise SystemExit("Missing fields: "+", ".join(missing))
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]):
+              raise SystemExit("Invalid project name.")
+          try: prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
+          except Exception as e: raise SystemExit("Invalid prompt encoding: "+str(e))
+          if not prompt.strip(): raise SystemExit("Prompt is empty.")
+          with open("/tmp/request.env","w",encoding="utf-8") as f:
+              for k in ["request_id","project","provider","stack","platform"]:
+                  f.write(k.upper()+"="+meta[k]+"\n")
+          with open("/tmp/prompt.txt","w",encoding="utf-8") as f: f.write(prompt)
+          PY
+          cat /tmp/request.env >> "$GITHUB_ENV"
+          {
+            echo "PROMPT<<__CODEPILOT_PROMPT__"
+            cat /tmp/prompt.txt
+            echo
+            echo "__CODEPILOT_PROMPT__"
+          } >> "$GITHUB_ENV"
+
+      - name: Dispatch generation workflow
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh workflow run codepilot-generate.yml \
+            --ref main \
+            -f prompt="$PROMPT" \
+            -f provider="$PROVIDER" \
+            -f stack="$STACK" \
+            -f platform="$PLATFORM" \
+            -f project="$PROJECT" \
+            -f request_id="$REQUEST_ID"
+
+      - name: Mark issue as processed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
+            --body "تم استلام طلب CodePilot2 وتشغيل GitHub Actions. معرّف الطلب: $REQUEST_ID."
