@@ -54,6 +54,7 @@ jobs:
           set -euo pipefail
           test -n "$GH_TOKEN"
           gh workflow run codepilot-generate.yml \
+            --repo "${{ github.repository }}" \
             --ref main \
             -f prompt="$PROMPT" \
             -f provider="$PROVIDER" \
