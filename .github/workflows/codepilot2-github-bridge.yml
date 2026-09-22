@@ -8,5 +8,32 @@ jobs:
   bridge:
     if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, 'CodePilot2:')
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
     steps:
-      - run: echo "CodePilot2 bridge is alive"
+      - name: Dispatch CodePilot request
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request
+          payload={"event_type":"codepilot_generate","client_payload":{
+              "issue_number":int(os.environ["ISSUE_NUMBER"]),
+              "issue_body":os.environ["ISSUE_BODY"]}}
+          req=urllib.request.Request(
+              "https://api.github.com/repos/gophisb/codepilot2/dispatches",
+              data=json.dumps(payload).encode(),
+              headers={"Accept":"application/vnd.github+json",
+                       "Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                       "X-GitHub-Api-Version":"2026-03-10",
+                       "Content-Type":"application/json"},
+              method="POST")
+          with urllib.request.urlopen(req,timeout=30) as r:
+              if r.status not in (200,201,204):
+                  raise SystemExit("Dispatch HTTP "+str(r.status))
+          PY
+      - name: Comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}"             --body "تم إرسال طلب CodePilot2 إلى GitHub Actions."
