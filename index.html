@@ -321,11 +321,28 @@ function buildPreview(){
 }
 function safeRepoUrl(value){
  try{
-  const u=new URL(value.trim());
-  if(u.protocol!=="https:"||u.hostname!=="github.com")return null;
-  const parts=u.pathname.split("/").filter(Boolean);
-  if(parts.length<2)return null;
-  return {owner:parts[0],repo:parts[1].replace(/\.git$/,"")};
+  const raw=value.trim();
+  const u=new URL(raw);
+  if(u.protocol!=="https:")return null;
+
+  // Accept a normal public GitHub repository URL:
+  // https://github.com/OWNER/REPO
+  if(u.hostname==="github.com"){
+    const parts=u.pathname.split("/").filter(Boolean);
+    if(parts.length<2)return null;
+    return {owner:parts[0],repo:parts[1].replace(/\.git$/,"")};
+  }
+
+  // Also accept the public GitHub Pages URL:
+  // https://OWNER.github.io/REPO
+  const m=u.hostname.match(/^([a-z0-9-]+)\\.github\\.io$/i);
+  if(m){
+    const parts=u.pathname.split("/").filter(Boolean);
+    if(parts.length<1)return null;
+    return {owner:m[1],repo:parts[0]};
+  }
+
+  return null;
  }catch{return null;}
 }
 async function githubJson(url){
