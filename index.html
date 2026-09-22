@@ -18,7 +18,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 .primary{background:var(--accent);color:#06120f}.secondary{background:var(--input);color:var(--text);border:1px solid var(--border)!important}
 .note{font-size:.78rem}.status{margin-top:10px;padding:10px;border-radius:9px;background:var(--input);color:var(--muted);font-size:.84rem}.ok{color:var(--ok)}.err{color:var(--danger)}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.step{padding:9px;background:var(--input);border-radius:9px;font-size:.8rem}
-.output{display:none}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.tab{margin:0}.tab.active{background:var(--accent);color:#06120f}
+.output{display:block}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.tab{margin:0}.tab.active{background:var(--accent);color:#06120f}
 .panel{display:none}.panel.active{display:block}.codebox{min-height:390px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.8rem;line-height:1.5;white-space:pre;tab-size:2}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{margin-top:8px}.preview-frame{width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#fff}
 .file-meta{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--muted);font-size:.76rem;margin:7px 0}.hidden{display:none!important}
@@ -53,7 +53,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 
 <div class="card">
 <h2>2 — فتح مشروع ZIP</h2>
-<p class="note">ارفع مشروعاً مضغوطاً بصيغة ZIP. سيتم فكّه داخل CodePilot2 مباشرة، ثم تظهر الملفات والكود والمعاينة دون تشغيل الذكاء الاصطناعي أو GitHub Actions.</p>
+<p class="note">ارفع مشروعاً مضغوطاً بصيغة ZIP. سيتم فكّه داخل CodePilot2 مباشرة. سيظهر الكود والمعاينة فوراً؛ أما تثبيت dependencies وتشغيل Node/React ونحوها فيحتاج إلى تشغيل Build عبر GitHub Actions.</p>
 <input id="zipInput" type="file" accept=".zip,application/zip">
 <div class="status" id="zipStatus">لم يتم اختيار ملف ZIP.</div>
 </div>
@@ -83,7 +83,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 
 <div class="card output" id="output">
 <h2>5 — الكود والملفات</h2>
-<p id="summary"></p>
+<p id="summary">لم يتم تحميل مشروع بعد. ارفع ZIP أو حمّل مستودع GitHub لتفعيل الكود والمعاينة.</p>
 <div class="tabs">
 <button class="secondary tab active" data-tab="code">الكود والملفات</button>
 <button class="secondary tab" data-tab="preview">المعاينة المؤقتة</button>
@@ -330,7 +330,9 @@ async function loadZipProject(file){
  q("files").onchange=()=>showFile(q("files").value);
  q("summary").textContent="تم فتح ZIP: "+generatedFiles.length+" ملفاً نصياً.";
  q("output").style.display="block"; showFile(0); buildPreview();
- q("loadStatus").textContent="تم فتح مشروع ZIP داخل CodePilot2 ✓";q("loadStatus").className="status ok";
+ document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active")); document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active")); q("previewPanel").classList.add("active"); document.querySelector(".tab[data-tab=\"preview\"]").classList.add("active");
+ const packageFile=generatedFiles.find(f=>normalizePath(f.path)==="package.json"||normalizePath(f.path).endsWith("/package.json"));
+ q("loadStatus").textContent=packageFile ? "تم فتح ZIP ✓ — تم اكتشاف package.json؛ التثبيت والتشغيل الفعلي يحتاجان Build عبر GitHub Actions." : "تم فتح ZIP ✓ — المعاينة المحلية جاهزة.";q("loadStatus").className="status ok";
  q("output").scrollIntoView({behavior:"smooth",block:"start"});
 }
 q("zipInput").onchange=async()=>{
