@@ -230,13 +230,23 @@ async function waitForRun(requestId,project){
  }
  throw new Error("انتهت مهلة انتظار GitHub Actions.");
 }
-async function waitForRepo(owner,project){
+async function waitForRepo(owner,project,sinceMs){
  const deadline=Date.now()+5*60*1000;
  while(Date.now()<deadline){
-   try{return await authedJson(apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project));}
-   catch(e){
+   try{
+     const exact=await authedJson(apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project));
+     if(new Date(exact.created_at).getTime()>=sinceMs-60000)return exact;
+   }catch(e){
      if(!String(e.message).includes("Not Found"))throw e;
    }
+   const repos=await authedJson(apiBase+"/user/repos?per_page=100&sort=created&direction=desc");
+   const candidate=(repos||[]).find(x=>{
+     if(x.owner?.login!==owner || new Date(x.created_at).getTime()<sinceMs-60000)return false;
+     if(x.name===project)return true;
+     if(!x.name.startsWith(project+"-"))return false;
+     return /^-\d+$/.test(x.name.slice(project.length));
+   });
+   if(candidate)return candidate;
    await new Promise(r=>setTimeout(r,5000));
  }
  throw new Error("انتهت مهلة انتظار المستودع الناتج.");
@@ -275,7 +285,7 @@ q("generate").onclick=async()=>{
      throw new Error("فشل Workflow: "+(run.conclusion||run.status)+". افتح سجل Actions للتفاصيل.");
    }
    setStatus("3/4 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
-   const repo=await waitForRepo(githubLoginName,project);
+   const repo=await waitForRepo(githubLoginName,project,startedAt);
    q("repoUrl").value=repo.html_url;
    const platform=q("platform").value;
    if(/web|pwa/i.test(platform)){
