@@ -1,14 +1,28 @@
 name: CodePilot Run
+run-name: "CodePilot: ${{ github.event.client_payload.project }} [${{ github.event.client_payload.request_id }}]"
 
 on:
   repository_dispatch:
     types: [codepilot_generate]
 
+permissions:
+  contents: read
+
 jobs:
-  receive:
+  run:
     runs-on: ubuntu-latest
+    env:
+      PROVIDER: ${{ github.event.client_payload.provider }}
+      PROMPT: ${{ github.event.client_payload.prompt }}
+      STACK: ${{ github.event.client_payload.stack }}
+      PLATFORM: ${{ github.event.client_payload.platform }}
+      PROJECT: ${{ github.event.client_payload.project }}
+      REQUEST_ID: ${{ github.event.client_payload.request_id }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
-      - name: Receive request
-        run: |
-          echo "CodePilot repository dispatch received"
-          echo "Issue: ${{ github.event.client_payload.issue_number }}"
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: python3 .github/scripts/generate.py
