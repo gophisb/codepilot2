@@ -1,0 +1,106 @@
+name: CodePilot - Generate Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "وصف التطبيق المطلوب"
+        required: true
+        type: string
+      provider:
+        description: "مزود الذكاء الاصطناعي"
+        required: true
+        default: "gemini"
+        type: choice
+        options: [gemini, deepseek, openai, openrouter]
+      stack:
+        description: "التقنية"
+        required: true
+        default: "HTML/CSS/JS"
+        type: string
+      platform:
+        description: "المنصة"
+        required: true
+        default: "Web / PWA"
+        type: string
+      project:
+        description: "اسم المشروع"
+        required: true
+        default: "مشروعي"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      PROVIDER: ${{ inputs.provider }}
+      PROMPT: ${{ inputs.prompt }}
+      STACK: ${{ inputs.stack }}
+      PLATFORM: ${{ inputs.platform }}
+      PROJECT: ${{ inputs.project }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.parse,urllib.error,pathlib,re,shutil
+          p=os.environ["PROVIDER"].strip().lower()
+          prompt=os.environ["PROMPT"].strip()
+          stack=os.environ["STACK"].strip()
+          platform=os.environ["PLATFORM"].strip()
+          project=os.environ["PROJECT"].strip()
+          keys={"gemini":os.environ.get("GEMINI_API_KEY",""),"deepseek":os.environ.get("DEEPSEEK_API_KEY",""),"openai":os.environ.get("OPENAI_API_KEY",""),"openrouter":os.environ.get("OPENROUTER_API_KEY","")}
+          if not keys.get(p): raise SystemExit("API key missing for selected provider")
+          system="""You are CodePilot, an engineering agent that builds runnable software.
+          Return JSON only: {"files":[{"path":"relative/path","content":"full file content"}],"summary":"short summary"}.
+          Generate a complete runnable project. Use safe relative paths. Never include secrets.
+          Avoid unnecessary dependencies. Respect the requested stack and platform."""
+          user=f"Request: {prompt}\nStack: {stack}\nPlatform: {platform}\nProject: {project}"
+          def post(url,payload,headers):
+            req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json",**headers},method="POST")
+            try:
+              with urllib.request.urlopen(req,timeout=180) as r:return json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:raise SystemExit("AI HTTP error: "+e.read().decode("utf-8","replace")[:1000])
+          key=keys[p]
+          if p=="gemini":
+            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+urllib.parse.quote(key)
+            data=post(url,{"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.2,"maxOutputTokens":12000}}, {})
+            text="".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
+          else:
+            urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions","openrouter":"https://openrouter.ai/api/v1/chat/completions"}
+            models={"deepseek":"deepseek-chat","openai":"gpt-4o","openrouter":"openai/gpt-4o"}
+            data=post(urls[p],{"model":models[p],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
+            text=data["choices"][0]["message"]["content"]
+          a,b=text.find("{"),text.rfind("}")
+          if a<0 or b<=a:raise SystemExit("Model did not return valid JSON")
+          result=json.loads(text[a:b+1]); files=result.get("files")
+          if not isinstance(files,list) or not 1<=len(files)<=40:raise SystemExit("Invalid file count")
+          root=pathlib.Path("generated-project")
+          if root.exists():shutil.rmtree(root)
+          root.mkdir()
+          for item in files:
+            path=str(item.get("path","")); content=str(item.get("content",""))
+            if not re.fullmatch(r"[A-Za-z0-9._/-]+",path) or path.startswith("/") or ".." in path or path==".github" or path.startswith(".github/") or len(path)>240:raise SystemExit("Invalid file path: "+path)
+            target=root/path; target.parent.mkdir(parents=True,exist_ok=True); target.write_text(content,encoding="utf-8")
+          pathlib.Path("generation-summary.md").write_text("# CodePilot\n\n"+str(result.get("summary",""))+"\n",encoding="utf-8")
+          PY
+      - name: Publish generated project
+        run: |
+          git config user.name "CodePilot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="codepilot/run-$GITHUB_RUN_ID"
+          git checkout -b "$BRANCH"
+          cp -R generated-project/. .
+          rm -rf generated-project
+          git add .
+          git commit -m "CodePilot: generate project $GITHUB_RUN_ID"
+          git push origin "$BRANCH"
+          echo "Generated branch: $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+          echo "main was not modified." >> "$GITHUB_STEP_SUMMARY"

@@ -1,82 +1,57 @@
-# CodePilot
+# CodePilot2
 
-وكيل هندسي لبناء التطبيقات — يحوّل أفكارك إلى كود.
+مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، بدون الاعتماد على Vercel.
 
-## النشر على Vercel
+## المعمارية الحالية
 
-1. ارفع المشروع على GitHub
-2. استورده في Vercel
-3. أضف متغير البيئة: `GEMINI_API_KEY`
-4. انشر
+الهاتف → GitHub Actions → مزود الذكاء الاصطناعي → فرع جديد في GitHub
 
-## المتغيرات المطلوبة
+الواجهة موجودة على GitHub Pages، بينما التوليد نفسه يعمل داخل GitHub Actions. هذا مهم لأن GitHub Pages لا يشغّل backend سرياً ولا يحفظ مفاتيح API.
 
-| المتغير | الوصف |
-|---------|-------|
-| `GEMINI_API_KEY` | مفتاح Google Gemini API |
-| `AI_PROVIDER` | المزود الافتراضي، وقيمته المقترحة `gemini` |
-| `AI_MODEL` | النموذج الاختياري، والافتراضي `gemini-2.5-flash` |
-| `DEEPSEEK_API_KEY` | مفتاح DeepSeek API (اختياري) |
-| `OPENAI_API_KEY` | مفتاح OpenAI (اختياري) |
-| `OPENROUTER_API_KEY` | مفتاح OpenRouter (اختياري) |
+## التشغيل
 
-يدعم التطبيق Google Gemini وDeepSeek وOpenAI وOpenRouter. أضف المفاتيح في إعدادات Vercel فقط، ولا ترفعها إلى GitHub.
+1. افتح تبويب **Actions** في المستودع.
+2. اختر **CodePilot - Generate Project**.
+3. اضغط **Run workflow**.
+4. اكتب وصف التطبيق.
+5. اختر مزود الذكاء الاصطناعي والتقنية والمنصة.
+6. شغّل الـ workflow.
+7. سيولد CodePilot الملفات ثم ينشئ فرعاً باسم `codepilot/run-...`.
+8. فرع `main` لا يتم تعديله.
 
-## الهيكل
+رابط التشغيل:
+https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml
 
-```
-codepilot/
-├── index.html        ← الواجهة
-├── api/
-│   ├── chat.js       ← معالج HTTP
-│   └── providers.js  ← إدارة مزودي AI
-├── .gitignore
-└── README.md
-```
+## مفاتيح الذكاء الاصطناعي
 
+أضف المفتاح المناسب من:
+**Settings → Secrets and variables → Actions → New repository secret**
 
-## GitHub Integration
-
-CodePilot2 now includes a simple GitHub connection foundation:
-- OAuth login from the app
-- Encrypted HttpOnly session cookie
-- CSRF state validation
-- Repository listing and controlled project writing
-- GitHub access token stays server-side in an encrypted HttpOnly session cookie
-
-### Vercel environment variables
-
-Add these variables in Vercel Project Settings → Environment Variables:
-
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
-- `GITHUB_SESSION_SECRET` — long random secret
-
-Create a GitHub OAuth App and set its callback URL to:
-
-`https://YOUR-DOMAIN/api/github?action=callback`
-
-For local development, use the matching local callback URL.
-
-### Current flow
-1. Sign in with GitHub.
-2. Select a repository.
-3. Use **بناء** to generate complete project files with the selected AI provider.
-4. Upload the generated files to a new `codepilot/<timestamp>` branch.
-5. `main` is not modified by CodePilot.
-
-### Important
-The AI keys and GitHub OAuth variables must be configured in the **Vercel runtime**. GitHub Actions Secrets do not automatically become Vercel runtime environment variables.
-
-Required for GitHub login:
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
-- `GITHUB_SESSION_SECRET`
-
-Required for AI generation (at least one provider):
-- `GEMINI_API_KEY`, or
-- `DEEPSEEK_API_KEY`, or
-- `OPENAI_API_KEY`, or
+يمكن استخدام واحد من:
+- `GEMINI_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `OPENAI_API_KEY`
 - `OPENROUTER_API_KEY`
 
-After changing Vercel environment variables, redeploy the project so the new runtime values are loaded.
+لا تضع أي مفتاح داخل الكود أو داخل GitHub Pages.
+
+## لماذا أزلنا Vercel؟
+
+GitHub Pages خدمة ثابتة، وملفات `/api/*.js` السابقة كانت تعتمد على Vercel Serverless Functions. لذلك نقلنا التنفيذ الحساس إلى GitHub Actions بدلاً من وضع مفاتيح API في المتصفح.
+
+## الأمان
+
+- مفاتيح AI تبقى داخل GitHub Actions Secrets.
+- التوليد لا يكتب مباشرة إلى `main`.
+- كل تشغيل ينتج فرعاً مستقلاً.
+- مسارات الملفات الناتجة تُفحص لمنع المسارات غير الآمنة.
+- لا توجد مفاتيح API في الواجهة.
+
+## المزودات
+
+يدعم workflow:
+- Google Gemini
+- DeepSeek
+- OpenAI
+- OpenRouter
+
