@@ -363,15 +363,19 @@ function showFile(index){
 }
 function normalizePath(p){return p.replace(/\\/g,"/").replace(/^\.\//,"").replace(/^\//,"");}
 function resolvePreviewPath(baseFile,assetPath){
- const raw=assetPath.split("?")[0].split("#")[0].trim();
+ const raw=String(assetPath||"").split("?")[0].split("#")[0].trim();
  if(!raw||/^(https?:|data:|blob:|javascript:|#)/i.test(raw))return null;
- const base=normalizePath(baseFile).split("/");
- base.pop();
- for(const part of normalizePath(raw).split("/")){
+ const clean=normalizePath(raw);
+ const base=raw.startsWith("/")?[]:normalizePath(baseFile).split("/");
+ if(!raw.startsWith("/"))base.pop();
+ for(const part of clean.split("/")){
    if(!part||part===".")continue;
    if(part==="..")base.pop();else base.push(part);
  }
  return normalizePath(base.join("/"));
+}
+function previewDataUrl(text,mime){
+ return "data:"+mime+";charset=utf-8,"+encodeURIComponent(String(text||""));
 }
 function buildPreview(){
  const frame=q("preview");
@@ -383,35 +387,84 @@ function buildPreview(){
 
  const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
  let html=htmlFile.content;
-
- // srcdoc has no real project directory. Make the preview self-contained.
  html=html.replace(/<base\b[^>]*>/gi,"");
 
- // Inline local CSS.
+ const moduleCache=new Map();
+ const makeModuleUrl=(path,stack)=>{
+   const key=normalizePath(path);
+   if(moduleCache.has(key))return moduleCache.get(key);
+   const file=map.get(key);
+   if(!file)return null;
+   if((stack||[]).includes(key))return null;
+   let js=file.content;
+   const nextStack=[...(stack||[]),key];
+   js=js.replace(/((?:import|export)\\s+(?:[\\s\\S]*?\\s+from\\s+)?|import\\s*\\()(["'])(\\.{1,2}\\/[^"']+)\\2/g,(m,prefix,quote,spec)=>{
+     const dep=resolvePreviewPath(key,spec);
+     if(!dep)return m;
+     const depUrl=makeModuleUrl(dep,nextStack);
+     return depUrl?prefix+quote+depUrl+quote:m;
+   });
+   const url=previewDataUrl(js,"text/javascript");
+   moduleCache.set(key,url);
+   return url;
+ };
+
+ // Inline local CSS and rewrite local url(...) references when the target is text/SVG.
  html=html.replace(/<link\b([^>]*?)\bhref=["']([^"']+)["']([^>]*)>/gi,(m,a,p,c)=>{
-   if(!/\.css(?:[?#].*)?$/i.test(p)) return m;
+   if(!/\.css(?:[?#].*)?$/i.test(p))return m;
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   return f ? "<style data-codepilot-preview>\n"+f.content+"\n</style>" : m;
+   if(!f)return m;
+   let css=f.content;
+   css=css.replace(/url\\((["']?)(?!data:|https?:|blob:|#)([^)"']+)\\1\\)/gi,(um,q2,p2)=>{
+     const dep=resolvePreviewPath(key,p2);
+     const asset=dep&&map.get(dep);
+     if(!asset)return um;
+     if(/\\.svg$/i.test(dep))return "url("+previewDataUrl(asset.content,"image/svg+xml")+")";
+     if(/\\.(css|txt|json|js)$/i.test(dep))return "url("+previewDataUrl(asset.content,"text/plain")+")";
+     return um;
+   });
+   return "<style data-codepilot-preview>\\n"+css+"\\n</style>";
  });
 
- // Inline local JavaScript while preserving module semantics.
- html=html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
+ // Inline local scripts. Module imports are converted to self-contained data URLs.
+ html=html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)><\\/script>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   if(!f) return m;
+   if(!f)return m;
    const attrs=(a+" "+c)
-     .replace(/\bsrc\s*=\s*["'][^"']*["']/gi,"")
-     .replace(/\s+/g," ")
+     .replace(/\\bsrc\\s*=\\s*["'][^"']*["']/gi,"")
+     .replace(/\\s+/g," ")
      .trim();
-   // Prevent a user JS closing tag from terminating the outer srcdoc parser.
-   const js=f.content.replace(/<\/script/gi,"<\\/script");
-   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\n"+js+"\n</script>";
+   let js=f.content;
+   if(/\\btype\\s*=\\s*["']module["']/i.test(attrs)){
+     const url=makeModuleUrl(key,[]);
+     if(url){
+       return "<script type=\"module\" data-codepilot-preview>\\nimport "+url+";\\n</script>";
+     }
+   }
+   js=js.replace(/<\\/script/gi,"<\\\\/script");
+   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\\n"+js+"\\n</script>";
  });
 
- // Make runtime errors visible instead of leaving a silent white iframe.
- const diagnostics="<script>(function(){window.addEventListener('error',function(e){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\\n'+(e.message||'Runtime error')+(e.lineno?'\\nline '+e.lineno:'');}catch(_){}});})();</script>";
- html=html.replace(/<body\b([^>]*)>/i,"<body$1>"+diagnostics);
+ // Rewrite ordinary local image/media links to data URLs when their content is available.
+ html=html.replace(/\\b(src|poster|href)=["']([^"']+)["']/gi,(m,attr,p)=>{
+   if(!/^(src|poster)$/i.test(attr))return m;
+   const key=resolvePreviewPath(htmlFile.path,p);
+   const asset=key&&map.get(key);
+   if(!asset)return m;
+   let mime="text/plain";
+   if(/\\.svg$/i.test(key))mime="image/svg+xml";
+   else if(/\\.html?$/i.test(key))mime="text/html";
+   else if(/\\.json$/i.test(key))mime="application/json";
+   else if(/\\.txt$/i.test(key))mime="text/plain";
+   else return m;
+   return attr+'="'+previewDataUrl(asset.content,mime)+'"';
+ });
+
+ const diagnostics="<script>(function(){function show(msg){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\\n'+msg;}catch(_){}}window.addEventListener('error',function(e){show((e.message||'Runtime error')+(e.filename?'\\n'+e.filename:'')+(e.lineno?'\\nline '+e.lineno:''));});window.addEventListener('unhandledrejection',function(e){show('Unhandled promise rejection\\n'+(e.reason&&e.reason.stack||e.reason||'Unknown error'));});})();</script>";
+ if(/<body\\b/i.test(html))html=html.replace(/<body\\b([^>]*)>/i,"<body$1>"+diagnostics);
+ else html=diagnostics+html;
  frame.srcdoc=html;
 }
 
