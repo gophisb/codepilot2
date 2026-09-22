@@ -476,7 +476,7 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
  b.classList.add("active");q(b.dataset.tab==="code"?"codePanel":"previewPanel").classList.add("active");if(b.dataset.tab==="preview")buildPreview();
 });
-renderGithubState();verifyGithubSession();
+renderGithubState();
 q("prompt").addEventListener("touchstart",()=>q("prompt").focus(),{passive:true});
 q("codeView").addEventListener("touchstart",()=>q("codeView").focus(),{passive:true});
 
