@@ -4,8 +4,8 @@ const apiBase="https://api.github.com";
 const clientId="Ov23licZ5dcPUjkYTYA";
 const workflowPath="codepilot-generate.yml";
 let generatedFiles=[], currentFileIndex=0;
-let githubToken=sessionStorage.getItem("codepilot2_github_token")||"";
-let githubLoginName=sessionStorage.getItem("codepilot2_github_login")||"";
+let githubToken=localStorage.getItem("codepilot2_github_token")||sessionStorage.getItem("codepilot2_github_token")||"";
+let githubLoginName=localStorage.getItem("codepilot2_github_login")||sessionStorage.getItem("codepilot2_github_login")||"";
 let pollTimer=null;
 
 function githubHeaders(){return {"Accept":"application/vnd.github+json","Authorization":"Bearer "+githubToken,"X-GitHub-Api-Version":"2026-03-10"};}
@@ -16,6 +16,14 @@ async function authedJson(url,options={}){
  return data;
 }
 function setGithubStatus(message,kind){q("githubStatus").textContent=message;q("githubStatus").className="status "+(kind||"");}
+async function ensureGithubConnection(){
+ if(githubToken){await verifyGithubSession();if(githubToken)return true;}
+ try{await startDeviceFlow();return !!githubToken;}catch(e){
+   const msg=String(e.message||e);
+   if(msg.includes("device_flow_disabled"))throw new Error("ربط GitHub يحتاج تفعيل Device Flow في إعدادات تطبيق GitHub المرتبط بـ CodePilot2.");
+   throw e;
+ }
+}
 function renderGithubState(){
  if(githubToken&&githubLoginName){
   setGithubStatus("متصل بـ GitHub باسم "+githubLoginName+" ✓","ok");
@@ -47,10 +55,10 @@ async function startDeviceFlow(){
    const td=await tr.json().catch(()=>({}));
    if(td.access_token){
      githubToken=td.access_token;
-     sessionStorage.setItem("codepilot2_github_token",githubToken);
+     localStorage.setItem("codepilot2_github_token",githubToken);sessionStorage.setItem("codepilot2_github_token",githubToken);
      const me=await authedJson(apiBase+"/user");
      githubLoginName=me.login||"GitHub";
-     sessionStorage.setItem("codepilot2_github_login",githubLoginName);
+     localStorage.setItem("codepilot2_github_login",githubLoginName);sessionStorage.setItem("codepilot2_github_login",githubLoginName);
      q("deviceBox").classList.add("hidden");renderGithubState();return;
    }
    if(td.error==="authorization_pending")continue;
@@ -66,7 +74,7 @@ async function verifyGithubSession(){
    githubLoginName=me.login||"GitHub";sessionStorage.setItem("codepilot2_github_login",githubLoginName);renderGithubState();
  }catch{
    githubToken="";githubLoginName="";
-   sessionStorage.removeItem("codepilot2_github_token");sessionStorage.removeItem("codepilot2_github_login");
+   localStorage.removeItem("codepilot2_github_token");localStorage.removeItem("codepilot2_github_login");sessionStorage.removeItem("codepilot2_github_token");sessionStorage.removeItem("codepilot2_github_login");
    renderGithubState();
  }
 }
@@ -157,7 +165,10 @@ q("generate").onclick=async()=>{
  const prompt=q("prompt").value.trim(), project=q("project").value.trim();
  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
  if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
- if(!githubToken){setStatus("اربط GitHub أولاً.","err");return;}
+ if(!githubToken){
+   try{setStatus("نفتح الآن ربط GitHub…","");if(!(await ensureGithubConnection()))throw new Error("لم يكتمل ربط GitHub.");}
+   catch(e){setStatus("فشل ربط GitHub: "+(e.message||e),"err");return;}
+ }
  q("generate").disabled=true;
  const startedAt=Date.now();
  const requestId="cp-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
@@ -299,7 +310,11 @@ jobs:
 `;
 async function publishZipProject(){
  if(!generatedFiles.length){q("zipRunStatus").textContent="ارفع ZIP أولاً.";q("zipRunStatus").className="status err";return;}
- if(!githubToken){q("zipRunStatus").textContent="اربط GitHub أولاً.";q("zipRunStatus").className="status err";return;}
+ if(!githubToken){
+   q("zipRunStatus").textContent="نفتح الآن ربط GitHub…";q("zipRunStatus").className="status";
+   try{if(!(await ensureGithubConnection()))throw new Error("لم يكتمل ربط GitHub.");}
+   catch(e){q("zipRunStatus").textContent="فشل ربط GitHub: "+(e.message||e);q("zipRunStatus").className="status err";return;}
+ }
  const b=q("publishZip");b.disabled=true;
  try{
    q("zipRunStatus").textContent="1/5 إنشاء مستودع جديد…";q("zipRunStatus").className="status";
