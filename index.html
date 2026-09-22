@@ -305,7 +305,7 @@ function showFile(index){
  currentFileIndex=Number(index)||0;const f=generatedFiles[currentFileIndex];if(!f)return;
  q("codeView").value=f.content;q("fileInfo").textContent=f.path+" — "+f.content.length+" حرف";
 }
-function normalizePath(p){return p.replace(/^\.\//,"").replace(/^\/,"");}
+function normalizePath(p){return p.replace(/^\.\//,"").replace(/^\//,"");}
 function buildPreview(){
  const htmlFile=generatedFiles.find(f=>normalizePath(f.path)==="index.html"||normalizePath(f.path).endsWith("/index.html"));
  if(!htmlFile){q("preview").srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";return;}
