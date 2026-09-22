@@ -349,6 +349,35 @@ jobs:
             f.write("**Load into CodePilot2-gophisb:** paste the repository URL into the loader.\n")
           pathlib.Path("target_repo.txt").write_text(repo["clone_url"],encoding="utf-8")
 
+      - name: Publish project to new repository
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          CLONE_URL="$(cat target_repo.txt)"
+          echo "Target repository: $CLONE_URL"
+
+          # Authenticate Git using the same token that created the target repository.
+          # This avoids relying on an HTTP extra-header being accepted by Git's HTTPS transport.
+          gh auth setup-git
+
+          cd generated-project
+          git init
+          git config user.name "CodePilot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b main
+          git add .
+          git commit -m "CodePilot: initial project"
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "$CLONE_URL"
+
+          # The new repository is intentionally empty, so publish the generated
+          # commit explicitly as the target default branch.
+          git push --set-upstream origin HEAD:main
+
+          cd ..
+          echo "Published project repository: $CLONE_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "CodePilot2-gophisb main was not modified." >> "$GITHUB_STEP_SUMMARY"
       - name: Configure GitHub Pages
         if: contains(inputs.platform, 'Web') || contains(inputs.platform, 'PWA')
         env:
@@ -405,32 +434,3 @@ jobs:
           test -s pages-url.txt
           echo "Pages entry point and URL are ready."
 
-      - name: Publish project to new repository
-        env:
-          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-          CLONE_URL="$(cat target_repo.txt)"
-          echo "Target repository: $CLONE_URL"
-
-          # Authenticate Git using the same token that created the target repository.
-          # This avoids relying on an HTTP extra-header being accepted by Git's HTTPS transport.
-          gh auth setup-git
-
-          cd generated-project
-          git init
-          git config user.name "CodePilot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b main
-          git add .
-          git commit -m "CodePilot: initial project"
-          git remote remove origin 2>/dev/null || true
-          git remote add origin "$CLONE_URL"
-
-          # The new repository is intentionally empty, so publish the generated
-          # commit explicitly as the target default branch.
-          git push --set-upstream origin HEAD:main
-
-          cd ..
-          echo "Published project repository: $CLONE_URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "CodePilot2-gophisb main was not modified." >> "$GITHUB_STEP_SUMMARY"
