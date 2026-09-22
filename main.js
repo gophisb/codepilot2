@@ -398,7 +398,7 @@ function buildPreview(){
    if((stack||[]).includes(key))return null;
    let js=file.content;
    const nextStack=[...(stack||[]),key];
-   js=js.replace(/((?:import|export)\\s+(?:[\\s\\S]*?\\s+from\\s+)?|import\\s*\\()(["'])(\\.{1,2}\\/[^"']+)\\2/g,(m,prefix,quote,spec)=>{
+   js=js.replace(/((?:import|export)\s+(?:[\s\S]*?\s+from\s+)?|import\s*\()(["'])(\.{1,2}\/[^"']+)\2/g,(m,prefix,quote,spec)=>{
      const dep=resolvePreviewPath(key,spec);
      if(!dep)return m;
      const depUrl=makeModuleUrl(dep,nextStack);
@@ -416,54 +416,54 @@ function buildPreview(){
    const f=key&&map.get(key);
    if(!f)return m;
    let css=f.content;
-   css=css.replace(/url\\((["']?)(?!data:|https?:|blob:|#)([^)"']+)\\1\\)/gi,(um,q2,p2)=>{
+   css=css.replace(/url\((["']?)(?!data:|https?:|blob:|#)([^)"']+)\1\)/gi,(um,q2,p2)=>{
      const dep=resolvePreviewPath(key,p2);
      const asset=dep&&map.get(dep);
      if(!asset)return um;
-     if(/\\.svg$/i.test(dep))return "url("+previewDataUrl(asset.content,"image/svg+xml")+")";
-     if(/\\.(css|txt|json|js)$/i.test(dep))return "url("+previewDataUrl(asset.content,"text/plain")+")";
+     if(/\.svg$/i.test(dep))return "url("+previewDataUrl(asset.content,"image/svg+xml")+")";
+     if(/\.(css|txt|json|js)$/i.test(dep))return "url("+previewDataUrl(asset.content,"text/plain")+")";
      return um;
    });
-   return "<style data-codepilot-preview>\\n"+css+"\\n</style>";
+   return "<style data-codepilot-preview>\n"+css+"\n</style>";
  });
 
  // Inline local scripts. Module imports are converted to self-contained data URLs.
- html=html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)><\\/script>/gi,(m,a,p,c)=>{
+ html=html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
    if(!f)return m;
    const attrs=(a+" "+c)
-     .replace(/\\bsrc\\s*=\\s*["'][^"']*["']/gi,"")
-     .replace(/\\s+/g," ")
+     .replace(/\bsrc\s*=\s*["'][^"']*["']/gi,"")
+     .replace(/\s+/g," ")
      .trim();
    let js=f.content;
-   if(/\\btype\\s*=\\s*["']module["']/i.test(attrs)){
+   if(/\btype\s*=\s*["']module["']/i.test(attrs)){
      const url=makeModuleUrl(key,[]);
      if(url){
-       return "<script type=\"module\" data-codepilot-preview>\\nimport "+url+";\\n</script>";
+       return "<script type=\"module\" data-codepilot-preview>\nimport "+url+";\n</script>";
      }
    }
-   js=js.replace(/<\\/script/gi,"<\\\\/script");
-   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\\n"+js+"\\n</script>";
+   js=js.replace(/<\/script/gi,"<\\/script");
+   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\n"+js+"\n</script>";
  });
 
  // Rewrite ordinary local image/media links to data URLs when their content is available.
- html=html.replace(/\\b(src|poster|href)=["']([^"']+)["']/gi,(m,attr,p)=>{
+ html=html.replace(/\b(src|poster|href)=["']([^"']+)["']/gi,(m,attr,p)=>{
    if(!/^(src|poster)$/i.test(attr))return m;
    const key=resolvePreviewPath(htmlFile.path,p);
    const asset=key&&map.get(key);
    if(!asset)return m;
    let mime="text/plain";
-   if(/\\.svg$/i.test(key))mime="image/svg+xml";
-   else if(/\\.html?$/i.test(key))mime="text/html";
-   else if(/\\.json$/i.test(key))mime="application/json";
-   else if(/\\.txt$/i.test(key))mime="text/plain";
+   if(/\.svg$/i.test(key))mime="image/svg+xml";
+   else if(/\.html?$/i.test(key))mime="text/html";
+   else if(/\.json$/i.test(key))mime="application/json";
+   else if(/\.txt$/i.test(key))mime="text/plain";
    else return m;
    return attr+'="'+previewDataUrl(asset.content,mime)+'"';
  });
 
- const diagnostics="<script>(function(){function show(msg){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\\n'+msg;}catch(_){}}window.addEventListener('error',function(e){show((e.message||'Runtime error')+(e.filename?'\\n'+e.filename:'')+(e.lineno?'\\nline '+e.lineno:''));});window.addEventListener('unhandledrejection',function(e){show('Unhandled promise rejection\\n'+(e.reason&&e.reason.stack||e.reason||'Unknown error'));});})();</script>";
- if(/<body\\b/i.test(html))html=html.replace(/<body\\b([^>]*)>/i,"<body$1>"+diagnostics);
+ const diagnostics="<script>(function(){function show(msg){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\n'+msg;}catch(_){}}window.addEventListener('error',function(e){show((e.message||'Runtime error')+(e.filename?'\n'+e.filename:'')+(e.lineno?'\nline '+e.lineno:''));});window.addEventListener('unhandledrejection',function(e){show('Unhandled promise rejection\n'+(e.reason&&e.reason.stack||e.reason||'Unknown error'));});})();</script>";
+ if(/<body\b/i.test(html))html=html.replace(/<body\b([^>]*)>/i,"<body$1>"+diagnostics);
  else html=diagnostics+html;
  frame.srcdoc=html;
 }
