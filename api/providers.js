@@ -4,6 +4,13 @@
 // providers.js — مسؤولية واحدة: إدارة مزودي الذكاء الاصطناعي
 // ============================================================
 
+const OPENROUTER_FREE_MODELS = [
+  'nvidia/nemotron-3-ultra-550b-a55b-20260604:free',
+  'poolside/laguna-s-2.1:free',
+  'inclusionai/ling-3.0-flash:free',
+  'nvidia/nemotron-3.5-lightning:free'
+];
+
 const PROVIDERS = {
   gemini: {
     base: 'https://generativelanguage.googleapis.com/v1beta/models',
@@ -25,7 +32,8 @@ const PROVIDERS = {
   },
   openrouter: {
     base: 'https://openrouter.ai/api/v1/chat/completions',
-    defaultModel: 'openai/gpt-4o',
+    defaultModel: OPENROUTER_FREE_MODELS[0],
+    fallbackModels: OPENROUTER_FREE_MODELS,
     envKey: 'OPENROUTER_API_KEY',
     type: 'chat'
   }
@@ -55,18 +63,26 @@ async function readResponse(response) {
 }
 
 async function callChatProvider(provider, apiKey, model, messages) {
+  const body = {
+    model,
+    messages,
+    temperature: 0.2,
+    max_tokens: 7000
+  };
+
+  // OpenRouter supports server-side model fallback: if the selected
+  // model fails/rate-limits/is unavailable, it tries the next model.
+  if (provider.fallbackModels) {
+    body.models = provider.fallbackModels;
+  }
+
   const response = await fetch(provider.base, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.2,
-      max_tokens: 7000
-    })
+    body: JSON.stringify(body)
   });
 
   const { raw, data } = await readResponse(response);
