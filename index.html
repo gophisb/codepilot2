@@ -89,6 +89,18 @@ const q=id=>document.getElementById(id);
 let generatedFiles=[];
 let currentFileIndex=0;
 
+async function checkBackend(){
+ try{
+   const response=await fetch("/api/health",{headers:{"Accept":"application/json"}});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok) throw new Error(data.error||("HTTP "+response.status));
+   const available=(data.providers||[]).join(", ");
+   setStatus("الخادم يعمل. مفاتيح المزودات المتاحة: "+(available||"لا يوجد مفتاح مُعدّ بعد.")+" — يمكنك التوليد.", available?"ok":"err");
+ }catch(error){
+   setStatus("الواجهة تعمل لكن Backend /api غير متاح: "+(error.message||error), "err");
+ }
+}
+
 function buildPrompt(){
  return "الطلب: "+q("prompt").value.trim()+"\nالتقنية: "+q("stack").value+"\nالمنصة: "+q("platform").value+"\nاسم المشروع: "+q("project").value+"\nالمزود: "+q("provider").value;
 }
@@ -183,6 +195,7 @@ q("copyPath").onclick=async()=>{
 q("codeView").addEventListener("input",()=>{
  if(generatedFiles[currentFileIndex]){generatedFiles[currentFileIndex].content=q("codeView").value;buildPreview()}
 });
+checkBackend();
 document.querySelectorAll(".tab").forEach(button=>{
  button.onclick=()=>{
    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
