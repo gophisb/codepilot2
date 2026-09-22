@@ -22,7 +22,10 @@ jobs:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - name: Generate project
         run: python3 .github/scripts/generate.py
+      - name: Publish project
+        run: bash .github/scripts/publish.sh
