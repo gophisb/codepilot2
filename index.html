@@ -76,6 +76,9 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <button class="primary" id="loadRepo">تحميل المشروع</button>
 </div>
 <div class="status" id="loadStatus">لم يتم تحميل مشروع بعد.</div>
+<div id="publicSite" class="status ok" style="display:none;margin-top:8px">
+🌐 <strong>الرابط العام:</strong> <a id="publicSiteLink" target="_blank" rel="noopener"></a>
+</div>
 </div>
 
 <div class="card output" id="output">
@@ -238,6 +241,21 @@ async function waitForRepo(owner,project){
  }
  throw new Error("انتهت مهلة انتظار المستودع الناتج.");
 }
+async function waitForPages(owner,project){
+ const deadline=Date.now()+5*60*1000;
+ const url=apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project)+"/pages";
+ while(Date.now()<deadline){
+   try{
+     const pages=await authedJson(url);
+     if(pages&&pages.html_url)return pages.html_url;
+     if(pages&&pages.status==="built")return "https://"+owner+".github.io/"+project+"/";
+   }catch(e){
+     if(!String(e.message).includes("HTTP 404"))throw e;
+   }
+   await new Promise(r=>setTimeout(r,5000));
+ }
+ throw new Error("تم إنشاء المستودع لكن GitHub Pages لم يصبح جاهزاً بعد.");
+}
 q("generate").onclick=async()=>{
  const prompt=q("prompt").value.trim(), project=q("project").value.trim();
  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
@@ -259,7 +277,16 @@ q("generate").onclick=async()=>{
    setStatus("3/4 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
    const repo=await waitForRepo(githubLoginName,project);
    q("repoUrl").value=repo.html_url;
-   setStatus("4/4 تم إنشاء المشروع وتحميل رابط المستودع ✓","ok");
+   const platform=q("platform").value;
+   if(/web|pwa/i.test(platform)){
+     setStatus("4/5 تم إنشاء المستودع. نتحقق من الرابط العام…","ok");
+     const publicUrl=await waitForPages(githubLoginName,project);
+     q("publicSiteLink").href=publicUrl;
+     q("publicSiteLink").textContent=publicUrl;
+     q("publicSite").style.display="block";
+   }else{
+     setStatus("4/5 تم إنشاء المستودع بنجاح ✓","ok");
+   }
    await loadRepository();
  }catch(e){
    setStatus("فشل التوليد: "+(e.message||e),"err");
