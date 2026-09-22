@@ -125,10 +125,58 @@ async function generate({ providerName, model, systemPrompt, userPrompt }) {
   const provider = getProvider(providerName);
   if (!provider) throw new Error(`مزود غير معروف: ${providerName}`);
 
+  const resolvedModel = model || provider.defaultModel;
+
+  // Primary path: Gemini. If it is unavailable or fails, use OpenRouter,
+  // which has its own server-side fallback list of free models.
+  if (providerName === 'gemini') {
+    const geminiKey = getApiKey(PROVIDERS.gemini);
+    try {
+      if (!geminiKey) throw new Error('مفتاح GEMINI_API_KEY غير موجود');
+      const text = await callGeminiProvider(
+        PROVIDERS.gemini,
+        geminiKey,
+        resolvedModel,
+        systemPrompt,
+        userPrompt
+      );
+      return { text, provider: 'gemini', model: resolvedModel };
+    } catch (geminiError) {
+      const openrouterKey = getApiKey(PROVIDERS.openrouter);
+      if (!openrouterKey) {
+        throw new Error(
+          `فشل Gemini ولا يوجد مفتاح OpenRouter للبديل: ${geminiError.message}`
+        );
+      }
+
+      try {
+        const fallbackModel = PROVIDERS.openrouter.defaultModel;
+        const text = await callChatProvider(
+          PROVIDERS.openrouter,
+          openrouterKey,
+          fallbackModel,
+          [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ]
+        );
+        return {
+          text,
+          provider: 'openrouter',
+          model: fallbackModel,
+          fallbackFrom: 'gemini'
+        };
+      } catch (openrouterError) {
+        throw new Error(
+          `فشل Gemini وOpenRouter معاً. Gemini: ${geminiError.message}; OpenRouter: ${openrouterError.message}`
+        );
+      }
+    }
+  }
+
   const apiKey = getApiKey(provider);
   if (!apiKey) throw new Error(`مفتاح API غير موجود للمزود: ${providerName}`);
 
-  const resolvedModel = model || provider.defaultModel;
   const text = provider.type === 'gemini'
     ? await callGeminiProvider(provider, apiKey, resolvedModel, systemPrompt, userPrompt)
     : await callChatProvider(provider, apiKey, resolvedModel, [
