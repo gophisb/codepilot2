@@ -6,109 +6,204 @@
 <meta name="theme-color" content="#0A0F1E">
 <title>CodePilot2</title>
 <style>
-:root{--bg:#0A0F1E;--card:#111827;--input:#1A2236;--accent:#00D4AA;--text:#F0F4FF;--muted:#7D8AA5;--border:rgba(255,255,255,.08)}
+:root{--bg:#0A0F1E;--card:#111827;--input:#1A2236;--accent:#00D4AA;--text:#F0F4FF;--muted:#7D8AA5;--border:rgba(255,255,255,.08);--danger:#fca5a5;--ok:#6ee7b7}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
-main{max-width:900px;margin:auto;padding:24px 16px 40px}h1{font-size:1.5rem;margin:0 0 6px;color:var(--accent)}p{color:var(--muted);line-height:1.7}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:14px}
-label{display:block;color:var(--muted);font-size:.8rem;margin:10px 0 6px}
-textarea,select,input{width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:11px;font:inherit}
-textarea{min-height:150px;resize:vertical}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:12px;text-align:center;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;margin-top:12px}
+main{max-width:980px;margin:auto;padding:20px 14px 44px}h1{font-size:1.6rem;margin:0 0 6px;color:var(--accent)}h2{font-size:1.05rem;margin:0 0 8px}p{color:var(--muted);line-height:1.65}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;margin-top:13px}
+label{display:block;color:var(--muted);font-size:.8rem;margin:9px 0 6px}
+textarea,select,input{width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px;font:inherit}
+textarea{min-height:145px;resize:vertical}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;text-align:center;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;margin-top:10px}
 .primary{background:var(--accent);color:#06120f}.secondary{background:var(--input);color:var(--text);border:1px solid var(--border)!important}
-.note{font-size:.78rem;color:var(--muted)}.status{margin-top:10px;padding:10px;border-radius:9px;background:var(--input);color:var(--muted);font-size:.85rem}
-.step{padding:10px 12px;border-radius:9px;background:var(--input);margin-top:8px}.ok{color:#6ee7b7}.err{color:#fca5a5}
-@media(max-width:520px){.grid{grid-template-columns:1fr}}
+.note{font-size:.78rem}.status{margin-top:10px;padding:10px;border-radius:9px;background:var(--input);color:var(--muted);font-size:.84rem}.ok{color:var(--ok)}.err{color:var(--danger)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.step{padding:9px;background:var(--input);border-radius:9px;font-size:.8rem}
+.output{display:none}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.tab{margin:0}.tab.active{background:var(--accent);color:#06120f}
+.panel{display:none}.panel.active{display:block}.codebox{min-height:390px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.8rem;line-height:1.5;white-space:pre;tab-size:2}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{margin-top:8px}.preview-frame{width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#fff}
+.file-meta{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--muted);font-size:.76rem;margin:7px 0}.hidden{display:none!important}
+.repo-row{display:grid;grid-template-columns:1fr auto;gap:8px}.repo-row button{width:auto;min-width:120px}
+@media(max-width:650px){.grid,.steps,.actions{grid-template-columns:1fr 1fr}.repo-row{grid-template-columns:1fr}.repo-row button{width:100%}}
+@media(max-width:420px){.grid,.steps,.actions{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main>
 <h1>CodePilot2</h1>
-<p>مولّد تطبيقات يعمل بهندسة GitHub فقط: الواجهة ثابتة على GitHub Pages، والتنفيذ والـAI داخل GitHub Actions. لا توجد مفاتيح سرية داخل المتصفح.</p>
+<p>واجهة بناء حقيقية: صمّم الطلب، نفّذه بأمان عبر GitHub Actions، ثم حمّل المستودع الناتج لرؤية الملفات وتعديل الكود ونسخه وتجربة معاينة مؤقتة داخل الهاتف.</p>
 
 <div class="card">
+<h2>1 — مواصفات المشروع</h2>
 <label for="prompt">وصف التطبيق</label>
-<textarea id="prompt" placeholder="مثال: أنشئ تطبيق مهام عربي يعمل دون إنترنت على الهاتف..."></textarea>
-
+<textarea id="prompt" placeholder="مثال: أنشئ تطبيق مهام عربي يعمل دون إنترنت على الهاتف، مع إضافة وحذف وتصفية وحفظ محلي..."></textarea>
 <div class="grid">
-<div><label for="provider">المزود</label>
-<select id="provider"><option>gemini</option><option>deepseek</option><option>openai</option><option>openrouter</option></select></div>
-<div><label for="stack">التقنية</label>
-<select id="stack"><option>HTML/CSS/JS</option><option>React</option><option>Vue</option><option>Flutter</option><option>Android/Kotlin</option><option>Node.js</option><option>Python</option></select></div>
-<div><label for="platform">المنصة</label>
-<select id="platform"><option>Web / PWA</option><option>Android</option><option>iOS</option><option>Desktop</option><option>API / Backend</option></select></div>
+<div><label for="provider">المزود</label><select id="provider"><option>gemini</option><option>deepseek</option><option>openai</option><option>openrouter</option></select></div>
+<div><label for="stack">التقنية</label><select id="stack"><option>HTML/CSS/JS</option><option>React</option><option>Vue</option><option>Flutter</option><option>Android/Kotlin</option><option>Node.js</option><option>Python</option></select></div>
+<div><label for="platform">المنصة</label><select id="platform"><option>Web / PWA</option><option>Android</option><option>iOS</option><option>Desktop</option><option>API / Backend</option></select></div>
 <div><label for="project">اسم المشروع</label><input id="project" value="my-codepilot-app" autocomplete="off"></div>
 </div>
-
-<button class="primary" id="generate">توليد المشروع الآن</button>
-<button class="secondary" id="copy">نسخ طلب التوليد</button>
-<a class="secondary btn" id="actions" href="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml" target="_blank" rel="noopener">فتح GitHub Actions</a>
-<div class="status" id="status">جاهز. اضغط «توليد المشروع الآن» لنسخ طلب مضبوط وفتح GitHub Actions.</div>
-<p class="note">مهم: GitHub Pages موقع ثابت ولا يشغّل /api أو Node.js. لذلك لا نحاول إرسال أسرار GitHub أو مفاتيح AI من المتصفح. هذا يمنع تسريب المفاتيح ويحافظ على هندسة GitHub-only.</p>
+<button class="primary" id="generate">تجهيز التوليد وفتح GitHub Actions</button>
+<button class="secondary" id="copyPrompt">نسخ طلب التوليد</button>
+<a class="secondary btn" id="actions" href="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml" target="_blank" rel="noopener">فتح Workflow مباشرة</a>
+<div class="status" id="status">جاهز.</div>
+<p class="note">الأمان: لا توجد مفاتيح AI أو GitHub داخل JavaScript. GitHub Pages ثابت؛ لذلك التنفيذ السري يبقى داخل Actions. زر التوليد يجهز نفس القيم لتدخلها في Run workflow.</p>
 </div>
 
 <div class="card">
-<strong>المسار الصحيح</strong>
-<div class="step">1. CodePilot2 على GitHub Pages يبني الطلب فقط.</div>
-<div class="step">2. GitHub Actions ينفذ الذكاء الاصطناعي باستخدام Secrets.</div>
-<div class="step">3. يتم إنشاء مستودع مستقل للمشروع ونشر الملفات فيه.</div>
-<div class="step">4. نتيجة التشغيل ورابط المستودع تظهران في GitHub Actions، مع Artifact للملفات المولدة.</div>
+<h2>2 — المسار التشغيلي</h2>
+<div class="steps">
+<div class="step">① الفكرة<br>والمواصفات</div>
+<div class="step">② Actions<br>يولد المشروع</div>
+<div class="step">③ GitHub<br>مستودع مستقل</div>
+<div class="step">④ CodePilot2<br>تحميل + كود + معاينة</div>
+</div>
 </div>
 
 <div class="card">
-<strong>لماذا أزلنا /api؟</strong>
-<p>وجود <code>/api/generate</code> و<code>/api/health</code> في مشروع منشور عبر GitHub Pages كان سبب العطل المعماري: الملفات يمكن أن توجد في المستودع، لكن GitHub Pages لا يحولها إلى Backend. الإبقاء عليها كان يعطي الواجهة انطباعاً أن الخادم موجود بينما هو غير موجود.</p>
+<h2>3 — تحميل المشروع الناتج</h2>
+<p class="note">بعد نجاح Workflow وإنشاء المستودع، الصق رابط المستودع العام هنا. لن تحتاج إلى نسخ الملفات يدوياً.</p>
+<div class="repo-row">
+<input id="repoUrl" placeholder="https://github.com/gophisb/my-codepilot-app">
+<button class="primary" id="loadRepo">تحميل المشروع</button>
+</div>
+<div class="status" id="loadStatus">لم يتم تحميل مشروع بعد.</div>
+</div>
+
+<div class="card output" id="output">
+<h2>4 — الكود والملفات</h2>
+<p id="summary"></p>
+<div class="tabs">
+<button class="secondary tab active" data-tab="code">الكود والملفات</button>
+<button class="secondary tab" data-tab="preview">المعاينة المؤقتة</button>
+</div>
+<div class="panel active" id="codePanel">
+<label for="files">الملف</label>
+<select id="files"></select>
+<div class="file-meta"><span id="fileInfo">—</span><span>النص قابل للتعديل محلياً</span></div>
+<textarea id="codeView" class="codebox" spellcheck="false"></textarea>
+<div class="actions">
+<button class="secondary" id="copyCode">نسخ الكود</button>
+<button class="secondary" id="copyPath">نسخ مسار الملف</button>
+</div>
+</div>
+<div class="panel" id="previewPanel">
+<p class="note">المعاينة آمنة ومؤقتة داخل iframe. تدعم حالياً مشاريع HTML/CSS/JS التي تحتوي index.html. التعديل في محرر الكود ينعكس على المعاينة.</p>
+<iframe id="preview" class="preview-frame" sandbox="allow-scripts"></iframe>
+</div>
+</div>
+
+<div class="card">
+<h2>ملاحظة هندسية مهمة</h2>
+<p>لا نحاول إحياء <code>/api/generate</code> داخل GitHub Pages. هذا كان سبباً معمارياً حقيقياً للعطل السابق. GitHub Actions هو محرك التنفيذ، وCodePilot2 هو واجهة التحكم والعرض. ولتفعيل زر «توليد» من الصفحة بدون فتح Actions مستقبلاً نحتاج مصادقة GitHub آمنة (GitHub App/OAuth)؛ لن نضع Personal Access Token داخل الصفحة كحل سريع.</p>
 </div>
 </main>
 
 <script>
 const q=id=>document.getElementById(id);
 const actionsUrl="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml";
+let generatedFiles=[], currentFileIndex=0;
 
 function buildPrompt(){
-  return [
-    "وصف التطبيق: "+q("prompt").value.trim(),
-    "التقنية: "+q("stack").value,
-    "المنصة: "+q("platform").value,
-    "اسم المشروع: "+q("project").value.trim(),
-    "المزود: "+q("provider").value
-  ].join("\n");
+ return [
+  "وصف التطبيق: "+q("prompt").value.trim(),
+  "التقنية: "+q("stack").value,
+  "المنصة: "+q("platform").value,
+  "اسم المشروع: "+q("project").value.trim(),
+  "المزود: "+q("provider").value
+ ].join("\n");
 }
-function setStatus(message,kind){
-  q("status").textContent=message;
-  q("status").className="status "+(kind||"");
-}
+function setStatus(message,kind){q("status").textContent=message;q("status").className="status "+(kind||"");}
+function validProject(name){return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(name)&&name!=="."&&name!=="..";}
 async function copyText(text){
-  try{await navigator.clipboard.writeText(text);return true}
-  catch{
-    const area=document.createElement("textarea");
-    area.value=text;document.body.appendChild(area);area.select();
-    const ok=document.execCommand("copy");area.remove();return ok;
-  }
+ try{await navigator.clipboard.writeText(text);return true}catch{
+  const a=document.createElement("textarea");a.value=text;document.body.appendChild(a);a.select();
+  const ok=document.execCommand("copy");a.remove();return ok;
+ }
 }
 q("generate").onclick=async()=>{
-  const prompt=q("prompt").value.trim();
-  const project=q("project").value.trim();
-  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return}
-  if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(project)){
-    setStatus("اسم المشروع غير صالح لـ GitHub. استخدم أحرفاً وأرقاماً و- أو _ أو . فقط.","err");return
+ const prompt=q("prompt").value.trim(), project=q("project").value.trim();
+ if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
+ if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
+ const copied=await copyText(buildPrompt());
+ setStatus(copied?"تم نسخ طلب التوليد. افتح Run workflow والصق القيم ثم شغّل التنفيذ.":"تعذر النسخ؛ افتح Actions وأدخل القيم يدوياً.","ok");
+ window.open(actionsUrl,"_blank","noopener");
+};
+q("copyPrompt").onclick=async()=>{
+ if(!q("prompt").value.trim()){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
+ const ok=await copyText(buildPrompt());setStatus(ok?"تم نسخ طلب التوليد ✓":"تعذر النسخ.",""+(ok?"ok":"err"));
+};
+
+function showFile(index){
+ currentFileIndex=Number(index)||0;const f=generatedFiles[currentFileIndex];if(!f)return;
+ q("codeView").value=f.content;q("fileInfo").textContent=f.path+" — "+f.content.length+" حرف";
+}
+function normalizePath(p){return p.replace(/^\.\//,"").replace(/^\/,"");}
+function buildPreview(){
+ const htmlFile=generatedFiles.find(f=>normalizePath(f.path)==="index.html"||normalizePath(f.path).endsWith("/index.html"));
+ if(!htmlFile){q("preview").srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";return;}
+ const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
+ let html=htmlFile.content;
+ html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
+   const f=map.get(normalizePath(p).split("?")[0]);return f?"<style>\n"+f.content+"\n</style>":m;
+ });
+ html=html.replace(/<script([^>]*?)src=["']([^"']+\.js)(?:\?[^"']*)?["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
+   const f=map.get(normalizePath(p).split("?")[0]);return f?"<script>\n"+f.content+"\n<\/script>":m;
+ });
+ q("preview").srcdoc=html;
+}
+function safeRepoUrl(value){
+ try{
+  const u=new URL(value.trim());
+  if(u.protocol!=="https:"||u.hostname!=="github.com")return null;
+  const parts=u.pathname.split("/").filter(Boolean);
+  if(parts.length<2)return null;
+  return {owner:parts[0],repo:parts[1].replace(/\.git$/,"")};
+ }catch{return null;}
+}
+async function githubJson(url){
+ const r=await fetch(url,{headers:{"Accept":"application/vnd.github+json"}});
+ if(!r.ok)throw new Error("GitHub API HTTP "+r.status);
+ return r.json();
+}
+async function loadRepository(){
+ const parsed=safeRepoUrl(q("repoUrl").value);
+ if(!parsed){q("loadStatus").textContent="رابط GitHub العام غير صالح.";q("loadStatus").className="status err";return;}
+ const button=q("loadRepo");button.disabled=true;q("loadStatus").textContent="جارٍ قراءة المستودع...";q("loadStatus").className="status";
+ try{
+  const repo=await githubJson("https://api.github.com/repos/"+encodeURIComponent(parsed.owner)+"/"+encodeURIComponent(parsed.repo));
+  const branch=repo.default_branch||"main";
+  const tree=await githubJson("https://api.github.com/repos/"+parsed.owner+"/"+parsed.repo+"/git/trees/"+encodeURIComponent(branch)+"?recursive=1");
+  if(tree.truncated)throw new Error("المستودع كبير جداً للتحميل المباشر؛ افتح المستودع أو حمّل الملفات على دفعات.");
+  const candidates=(tree.tree||[]).filter(x=>x.type==="blob"&&!x.path.startsWith(".git/")&&!/(^|\/)(node_modules|dist|build|\.next|\.git)(\/|$)/.test(x.path)).slice(0,100);
+  if(!candidates.length)throw new Error("لم نجد ملفات نصية قابلة للعرض.");
+  generatedFiles=[];
+  for(const item of candidates){
+   if(item.size>300000)continue;
+   const raw="https://raw.githubusercontent.com/"+parsed.owner+"/"+parsed.repo+"/"+encodeURIComponent(branch)+"/"+item.path.split("/").map(encodeURIComponent).join("/");
+   const r=await fetch(raw);
+   if(!r.ok)continue;
+   const content=await r.text();
+   if(content.includes("\u0000"))continue;
+   generatedFiles.push({path:item.path,content});
   }
-  const text=buildPrompt();
-  const copied=await copyText(text);
-  setStatus(
-    copied
-      ? "تم نسخ طلب التوليد. افتح GitHub Actions، اضغط Run workflow، ثم الصق الطلب في خانة الوصف واضبط باقي الخيارات."
-      : "افتح GitHub Actions ثم الصق الطلب الظاهر في زر «نسخ طلب التوليد».",
-    "ok"
-  );
-  window.open(actionsUrl,"_blank","noopener");
-};
-q("copy").onclick=async()=>{
-  const prompt=q("prompt").value.trim();
-  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return}
-  const ok=await copyText(buildPrompt());
-  setStatus(ok?"تم نسخ طلب التوليد ✓":"تعذر النسخ تلقائياً؛ استخدم زر GitHub Actions ثم أدخل البيانات يدوياً.",ok?"ok":"err");
-};
-q("actions").onclick=()=>setStatus("افتح GitHub Actions ثم اختر CodePilot - Generate Project واضغط Run workflow.","");
+  if(!generatedFiles.length)throw new Error("لم يمكن قراءة الملفات النصية.");
+  q("files").innerHTML="";
+  generatedFiles.forEach((f,i)=>{const o=document.createElement("option");o.value=i;o.textContent=f.path;q("files").appendChild(o);});
+  q("files").onchange=()=>showFile(q("files").value);
+  q("summary").textContent="تم تحميل "+generatedFiles.length+" ملفاً من "+parsed.owner+"/"+parsed.repo+" (branch: "+branch+").";
+  q("output").style.display="block";showFile(0);buildPreview();
+  q("loadStatus").textContent="تم التحميل بنجاح ✓";q("loadStatus").className="status ok";
+  q("output").scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(e){q("loadStatus").textContent="فشل تحميل المشروع: "+(e.message||e);q("loadStatus").className="status err";}
+ finally{button.disabled=false;}
+}
+q("loadRepo").onclick=loadRepository;
+q("codeView").addEventListener("input",()=>{if(generatedFiles[currentFileIndex]){generatedFiles[currentFileIndex].content=q("codeView").value;buildPreview();}});
+q("copyCode").onclick=async()=>{const ok=await copyText(q("codeView").value);q("copyCode").textContent=ok?"تم نسخ الكود ✓":"فشل النسخ";setTimeout(()=>q("copyCode").textContent="نسخ الكود",1500);};
+q("copyPath").onclick=async()=>{const ok=await copyText(generatedFiles[currentFileIndex]?.path||"");q("copyPath").textContent=ok?"تم نسخ المسار ✓":"فشل النسخ";setTimeout(()=>q("copyPath").textContent="نسخ مسار الملف",1500);};
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+ b.classList.add("active");q(b.dataset.tab==="code"?"codePanel":"previewPanel").classList.add("active");if(b.dataset.tab==="preview")buildPreview();
+});
 </script>
 </body>
 </html>
