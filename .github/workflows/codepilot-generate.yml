@@ -1,3 +1,5 @@
+run-name: "CodePilot: ${{ inputs.project }} [${{ inputs.request_id }}]"
+
 name: CodePilot - Generate Project
 
 on:
@@ -28,6 +30,11 @@ on:
         required: true
         default: "my-codepilot-app"
         type: string
+      request_id:
+        description: "معرف طلب التوليد"
+        required: true
+        default: "manual"
+        type: string
 
 permissions:
   contents: read
@@ -41,6 +48,7 @@ jobs:
       STACK: ${{ inputs.stack }}
       PLATFORM: ${{ inputs.platform }}
       PROJECT: ${{ inputs.project }}
+      REQUEST_ID: ${{ inputs.request_id }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
