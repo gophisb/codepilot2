@@ -11,7 +11,7 @@
 main{max-width:980px;margin:auto;padding:20px 14px 44px}h1{font-size:1.6rem;margin:0 0 6px;color:var(--accent)}h2{font-size:1.05rem;margin:0 0 8px}p{color:var(--muted);line-height:1.65}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px;margin-top:13px}
 label{display:block;color:var(--muted);font-size:.8rem;margin:9px 0 6px}
-textarea,select,input{width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px;font:inherit}
+textarea,select,input{width:100%;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px;font:inherit;pointer-events:auto;user-select:text;-webkit-user-select:text;touch-action:manipulation}
 textarea{min-height:145px;resize:vertical}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;text-align:center;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;margin-top:10px}
 .primary{background:var(--accent);color:#06120f}.secondary{background:var(--input);color:var(--text);border:1px solid var(--border)!important}
@@ -34,7 +34,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <div class="card">
 <h2>1 — مواصفات المشروع</h2>
 <label for="prompt">وصف التطبيق</label>
-<textarea id="prompt" placeholder="مثال: أنشئ تطبيق مهام عربي يعمل دون إنترنت على الهاتف، مع إضافة وحذف وتصفية وحفظ محلي..."></textarea>
+<textarea id="prompt" autocomplete="off" autocapitalize="sentences" spellcheck="true" inputmode="text" placeholder="مثال: أنشئ تطبيق مهام عربي يعمل دون إنترنت على الهاتف، مع إضافة وحذف وتصفية وحفظ محلي..."></textarea>
 <div class="grid">
 <div><label for="provider">المزود</label><select id="provider"><option>gemini</option><option>deepseek</option><option>openai</option><option>openrouter</option></select></div>
 <div><label for="stack">التقنية</label><select id="stack"><option>HTML/CSS/JS</option><option>React</option><option>Vue</option><option>Flutter</option><option>Android/Kotlin</option><option>Node.js</option><option>Python</option></select></div>
@@ -82,7 +82,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <label for="files">الملف</label>
 <select id="files"></select>
 <div class="file-meta"><span id="fileInfo">—</span><span>النص قابل للتعديل محلياً</span></div>
-<textarea id="codeView" class="codebox" spellcheck="false"></textarea>
+<textarea id="codeView" class="codebox" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"></textarea>
 <div class="actions">
 <button class="secondary" id="copyCode">نسخ الكود</button>
 <button class="secondary" id="copyPath">نسخ مسار الملف</button>
@@ -335,7 +335,7 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
  b.classList.add("active");q(b.dataset.tab==="code"?"codePanel":"previewPanel").classList.add("active");if(b.dataset.tab==="preview")buildPreview();
 });
-renderGithubState();verifyGithubSession();
+renderGithubState();verifyGithubSession();\nq("prompt").addEventListener("touchstart",()=>q("prompt").focus(),{passive:true});\nq("codeView").addEventListener("touchstart",()=>q("codeView").focus(),{passive:true});
 </script>
 </body>
 </html>
