@@ -1,40 +1,52 @@
 # CodePilot2
 
-مولّد تطبيقات بالذكاء الاصطناعي مرتبط بـ GitHub، يعمل الآن بهندسة **GitHub-only**.
+مولّد تطبيقات AI مبني حول GitHub، مع واجهة تعمل على GitHub Pages ومحرك تنفيذ آمن داخل GitHub Actions.
 
-## المعمارية
+## المعمارية الحالية
 
-`الهاتف → GitHub Pages → GitHub Actions → مزود AI → مستودع GitHub مستقل`
+`الهاتف → GitHub Pages → GitHub Actions → AI → مستودع GitHub مستقل → CodePilot2 Loader`
 
-- GitHub Pages: واجهة ثابتة فقط.
-- GitHub Actions: التنفيذ، استدعاء مزود AI، والتحقق، وإنشاء المستودع.
-- AI/GitHub secrets: تبقى داخل GitHub Actions Secrets.
-- كل مشروع مولّد يذهب إلى مستودع مستقل.
-- لا يتم تعديل `main` في CodePilot2 أثناء التوليد.
+- **GitHub Pages:** واجهة ثابتة؛ لا تحتوي أسراراً ولا تحاول تشغيل Backend.
+- **GitHub Actions:** يستقبل الطلب عبر `workflow_dispatch`، يستدعي مزود AI، يتحقق من الملفات، وينشئ مستودعاً مستقلاً.
+- **AI/GitHub secrets:** تبقى داخل GitHub Actions Secrets.
+- **المستودع الناتج:** كل مشروع يولّد في مستودع مستقل.
+- **CodePilot2:** يستطيع تحميل المستودع العام الناتج وعرض الملفات والكود وتعديله محلياً وفتح معاينة مؤقتة.
 
-### لماذا لا يوجد /api؟
+## لماذا أزلنا /api؟
 
-GitHub Pages لا يشغّل Node.js أو Python كـ Backend. لذلك كانت محاولة الواجهة السابقة لاستدعاء `/api/generate` معمارياً غير صحيحة. وجود ملف JavaScript داخل المستودع لا يحوله إلى API على GitHub Pages.
+وجود `/api/generate` في مشروع منشور على GitHub Pages لا ينشئ خادماً. GitHub Pages يخدم ملفات ثابتة فقط؛ لذلك كان مسار `fetch("/api/generate")` سبباً مباشراً لفشل النسخة السابقة.
 
-لذلك أزيل مسار Vercel/API من CodePilot2، وأصبح GitHub Actions هو مسار التنفيذ الوحيد.
+لن نضع `GH_REPO_TOKEN` أو مفاتيح AI داخل JavaScript المنشور كحل سريع. هذا كان سيحوّل إصلاح العطل إلى تسريب أسرار.
 
 ## الاستخدام من الهاتف
 
-1. افتح CodePilot2 على GitHub Pages.
-2. اكتب فكرة التطبيق.
-3. اختر المزود والتقنية والمنصة واسم المشروع.
-4. اضغط **توليد المشروع الآن**.
-5. سيُنسخ طلب التوليد ويفتح GitHub Actions.
-6. اختر **CodePilot - Generate Project** ثم **Run workflow**.
-7. الصق وصف التطبيق في خانة `prompt` واضبط الخيارات.
-8. شغّل الـ workflow.
-9. بعد نجاحه سيظهر رابط المستودع الجديد في ملخص التشغيل، وستوجد ملفات المشروع أيضاً كـ Artifact.
+1. افتح CodePilot2.
+2. اكتب وصف التطبيق واختر المزود والتقنية والمنصة واسم المشروع.
+3. اضغط **تجهيز التوليد وفتح GitHub Actions**.
+4. في GitHub Actions اختر **Run workflow**.
+5. أدخل نفس القيم التي جهزتها الواجهة، ثم شغّل Workflow.
+6. بعد نجاحه، سيظهر رابط المستودع الجديد في ملخص التشغيل.
+7. انسخ رابط المستودع إلى خانة **تحميل المشروع الناتج** داخل CodePilot2.
+8. ستظهر الملفات، ويمكن تعديل الكود ونسخه وتجربة `index.html` في المعاينة المؤقتة.
 
-هذا الفصل بين الواجهة والتنفيذ مقصود لأسباب أمنية: لا نضع `GH_REPO_TOKEN` أو مفاتيح AI في JavaScript المنشور.
+## الكود والملفات والمعاينة
 
-## GitHub Actions
+واجهة CodePilot2 تحتوي الآن على:
 
-الملف الرئيسي:
+- قائمة ملفات المشروع.
+- محرر نصي للكود.
+- نسخ الكود.
+- نسخ مسار الملف.
+- تحميل مستودع GitHub عام مباشرة.
+- معاينة مؤقتة داخل `iframe sandbox`.
+- دمج CSS وJS المحليين في `index.html` للمعاينة.
+- تحديث المعاينة عند تعديل الكود محلياً.
+
+المعاينة ليست Build نهائياً ولا تنشر التعديلات إلى GitHub؛ هي مساحة اختبار سريعة.
+
+## Workflow
+
+الملف:
 
 `.github/workflows/codepilot-generate.yml`
 
@@ -45,15 +57,38 @@ GitHub Pages لا يشغّل Node.js أو Python كـ Backend. لذلك كانت
 - OpenAI
 - OpenRouter
 
-ويستخدم `workflow_dispatch` مع مدخلات `prompt`, `provider`, `stack`, `platform`, `project`.
+ويستخدم `workflow_dispatch` مع:
+
+- `prompt`
+- `provider`
+- `stack`
+- `platform`
+- `project`
+
+## Gemini
+
+يستخدم Workflow حالياً `gemini-3.8-flash` مع إخراج JSON منظّم. تم إزالة `temperature` من طلب Gemini لأن وثائق Gemini 3.8 الحالية تنص على إزالة معاملات أخذ العينات القديمة عند الترحيل إلى 3.8، كما يدعم النموذج إخراج JSON منظماً. citeturn1search0turn3search0turn3search5
+
+## التحقق من الناتج
+
+قبل إنشاء المستودع:
+
+- يتم التحقق من اسم المشروع.
+- يتم رفض مسارات `.git` و`.github` ومسارات traversal.
+- يتم رفض الملفات النصية الكبيرة جداً.
+- يتم فرض حد للملفات المولدة.
+- يتم إنشاء `generation-meta.json` وملخص للتشغيل.
+- يتم إنشاء Artifact مضغوط للمشروع.
+
+ثم ينشأ مستودع مستقل ويُدفع إليه المشروع. لا يتم تعديل `main` في CodePilot2.
 
 ## Secrets
 
-أضف المفاتيح من:
+من:
 
 **Settings → Secrets and variables → Actions**
 
-يمكن استخدام:
+المتغيرات المطلوبة بحسب المزود:
 
 - `GEMINI_API_KEY`
 - `DEEPSEEK_API_KEY`
@@ -61,29 +96,24 @@ GitHub Pages لا يشغّل Node.js أو Python كـ Backend. لذلك كانت
 - `OPENROUTER_API_KEY`
 - `GH_REPO_TOKEN`
 
-لا تضع أي مفتاح داخل الواجهة أو في المستودع.
+### GH_REPO_TOKEN
 
-## Gemini
+إنشاء مستودع عبر GitHub API يحتاج صلاحية مناسبة لإنشاء المستودعات؛ بالنسبة إلى Fine-grained PAT، توضح وثائق GitHub أن endpoint إنشاء مستودع للمستخدم يحتاج **Administration: write**، بينما PAT الكلاسيكي يحتاج `public_repo` أو `repo` للمستودع العام. citeturn2search1turn2search3turn2search7
 
-الموديل الحالي في Actions هو `gemini-3.8-flash`. وهو اسم موديل مستقر موثق في قائمة نماذج Gemini API الحالية. citeturn1search10
+لا تضع هذا التوكن في الواجهة.
 
-## OpenRouter
+## لماذا لا يوجد زر توليد سري مباشر من Pages؟
 
-يستخدم workflow موجّه `openrouter/free` بدلاً من تثبيت معرف نموذج مجاني قد يتغير أو يتوقف.
+صفحة GitHub Pages لا تملك هوية GitHub للمستخدم. تشغيل `workflow_dispatch` من API يتطلب مصادقة وصلاحية Actions مناسبة؛ وثائق GitHub تحدد أن Fine-grained tokens تحتاج **Actions: write** لهذا endpoint. citeturn0search1
 
-## النتيجة
+لذلك المرحلة الحالية تفصل الواجهة عن التنفيذ بدلاً من وضع PAT داخل المتصفح.
 
-مثال:
+**المرحلة التالية، إذا أردنا زر Generate حقيقياً من داخل الصفحة، هي GitHub App/OAuth مع أقل صلاحيات ممكنة.** لن نستخدم PAT مكشوفاً في JavaScript.
 
-- اسم المشروع: `test-clock`
-- النتيجة: مستودع مستقل `gophisb/test-clock`
-- CodePilot2: يبقى سليماً ولا يستقبل ملفات المشروع المولّد.
+## مبدأ المشروع
 
-## مراجع هندسية مفتوحة المصدر
+CodePilot2 ليس مجرد مولّد نصوص. المسار المستهدف:
 
-راجعنا مشاريع مفتوحة المصدر مشابهة للاستفادة من الأنماط الهندسية، لا لنسخها:
+**فكرة → مواصفات → توليد → مستودع → قراءة الملفات → تعديل الكود → معاينة → نشر/تسليم**
 
-- Open Builder: مولّد تطبيقات AI مفتوح المصدر مع live preview وبنية GitHub Pages/Actions. urlOpen Builder على GitHubhttps://github.com/Amery2010/open-builder
-- OpenPage: بنية JSON-first مع معاينة مباشرة وتعديلات قابلة للتتبع. urlOpenPage على GitHubhttps://github.com/buildingopen/openpage
-
-المبدأ الذي نأخذه منهما: فصل التوليد عن العرض، وإبقاء حالة المشروع قابلة للتتبع، بدلاً من محاولة تشغيل Backend داخل GitHub Pages.
+مع إبقاء الأسرار والتنفيذ الموثوق داخل GitHub Actions.
