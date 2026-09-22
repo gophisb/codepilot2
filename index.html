@@ -139,7 +139,7 @@ function renderGithubState(){
  }
 }
 async function startDeviceFlow(){
- const r=await fetch("https://github.com/login/device/code?client_id="+encodeURIComponent(clientId),{
+ const r=await fetch("https://github.com/login/device/code?client_id="+encodeURIComponent(clientId)+"&scope="+encodeURIComponent("repo workflow"),{
    method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"}
  });
  const d=await r.json();
@@ -272,6 +272,7 @@ q("generate").onclick=async()=>{
  if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
  if(!githubToken){setStatus("اربط GitHub أولاً.","err");return;}
  q("generate").disabled=true;
+ const startedAt=Date.now();
  const requestId="cp-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
  try{
    setStatus("1/4 إرسال الطلب إلى GitHub Actions…","");
@@ -290,7 +291,8 @@ q("generate").onclick=async()=>{
    const platform=q("platform").value;
    if(/web|pwa/i.test(platform)){
      setStatus("4/5 تم إنشاء المستودع. نتحقق من الرابط العام…","ok");
-     const publicUrl=await waitForPages(githubLoginName,project);
+     const publicOwner=repo.owner?.login||githubLoginName;
+     const publicUrl=await waitForPages(publicOwner,repo.name);
      q("publicSiteLink").href=publicUrl;
      q("publicSiteLink").textContent=publicUrl;
      q("publicSite").style.display="block";
