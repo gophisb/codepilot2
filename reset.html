@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CodePilot2 — تنظيف ذاكرة التطبيق</title>
+<body style="font-family:system-ui;padding:24px;background:#0A0F1E;color:#F0F4FF">
+<h2>جاري تنظيف النسخة القديمة…</h2>
+<p id="s">سيتم حذف Service Worker وCache الخاصة بالموقع ثم فتح النسخة الجديدة.</p>
+<script>
+(async function(){
+  try{
+    if("serviceWorker" in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if("caches" in window){
+      const keys=await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+    try{sessionStorage.clear();localStorage.removeItem("codepilot2_github_token");localStorage.removeItem("codepilot2_github_login");}catch(_){}
+  }catch(e){
+    document.getElementById("s").textContent="تم تجاوز خطأ التنظيف وسيتم فتح النسخة الجديدة.";
+  }
+  location.replace("./?v=20260922-recovery3");
+})();
+</script>
+</body>
+</html>
