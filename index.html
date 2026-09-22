@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A0F1E">
-<title>CodePilot</title>
+<title>CodePilot2</title>
 <style>
 :root{--bg:#0A0F1E;--card:#111827;--input:#1A2236;--accent:#00D4AA;--text:#F0F4FF;--muted:#7D8AA5;--border:rgba(255,255,255,.08)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
@@ -16,21 +16,14 @@ textarea{min-height:150px;resize:vertical}.grid{display:grid;grid-template-colum
 button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:12px;text-align:center;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;margin-top:12px}
 .primary{background:var(--accent);color:#06120f}.secondary{background:var(--input);color:var(--text);border:1px solid var(--border)!important}
 .note{font-size:.78rem;color:var(--muted)}.status{margin-top:10px;padding:10px;border-radius:9px;background:var(--input);color:var(--muted);font-size:.85rem}
-.output{display:none}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-.tab{margin:0}.tab.active{background:var(--accent);color:#06120f}
-.panel{display:none}.panel.active{display:block}
-#files{margin-bottom:10px}.codebox{min-height:360px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.82rem;line-height:1.5;white-space:pre;tab-size:2}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{margin-top:8px}
-.preview-frame{width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#fff}
-.file-meta{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--muted);font-size:.78rem;margin:8px 0}
-.ok{color:#6ee7b7}.err{color:#fca5a5}
-@media(max-width:520px){.grid,.actions{grid-template-columns:1fr}}
+.step{padding:10px 12px;border-radius:9px;background:var(--input);margin-top:8px}.ok{color:#6ee7b7}.err{color:#fca5a5}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main>
-<h1>CodePilot</h1>
-<p>مولّد تطبيقات عملي: اكتب الفكرة، ولّد المشروع، شاهد الملفات، انسخ الكود يدوياً، ثم جرّب معاينة HTML/PWA مؤقتة. وتبقى أدوات GitHub Actions السابقة متاحة.</p>
+<h1>CodePilot2</h1>
+<p>مولّد تطبيقات يعمل بهندسة GitHub فقط: الواجهة ثابتة على GitHub Pages، والتنفيذ والـAI داخل GitHub Actions. لا توجد مفاتيح سرية داخل المتصفح.</p>
 
 <div class="card">
 <label for="prompt">وصف التطبيق</label>
@@ -43,168 +36,79 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:12px;te
 <select id="stack"><option>HTML/CSS/JS</option><option>React</option><option>Vue</option><option>Flutter</option><option>Android/Kotlin</option><option>Node.js</option><option>Python</option></select></div>
 <div><label for="platform">المنصة</label>
 <select id="platform"><option>Web / PWA</option><option>Android</option><option>iOS</option><option>Desktop</option><option>API / Backend</option></select></div>
-<div><label for="project">اسم المشروع</label><input id="project" value="my-codepilot-app"></div>
+<div><label for="project">اسم المشروع</label><input id="project" value="my-codepilot-app" autocomplete="off"></div>
 </div>
 
 <button class="primary" id="generate">توليد المشروع الآن</button>
-<button class="secondary" id="copy">نسخ الطلب</button>
-<a class="secondary btn" href="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml" target="_blank" rel="noopener">فتح CodePilot في GitHub Actions</a>
-<div class="status" id="status">جاهز. يمكنك التوليد من الواجهة أو استخدام GitHub Actions كما في السابق.</div>
-<p class="note">المفاتيح لا تظهر في الواجهة؛ التوليد المباشر يمر عبر /api/generate. GitHub Actions يبقى مساراً مستقلاً.</p>
-</div>
-
-<div class="card output" id="output">
-<strong>المشروع الناتج</strong>
-<p id="summary"></p>
-<div class="tabs">
-<button class="secondary tab active" data-tab="code">الكود والملفات</button>
-<button class="secondary tab" data-tab="preview">المعاينة المؤقتة</button>
-</div>
-
-<div class="panel active" id="codePanel">
-<label for="files">الملف</label>
-<select id="files"></select>
-<div class="file-meta"><span id="fileInfo">—</span><span>يمكنك تعديل النص ثم نسخه يدوياً</span></div>
-<textarea id="codeView" class="codebox" spellcheck="false"></textarea>
-<div class="actions">
-<button class="secondary" id="copyCode">نسخ الكود</button>
-<button class="secondary" id="copyPath">نسخ مسار الملف</button>
-</div>
-</div>
-
-<div class="panel" id="previewPanel">
-<p class="note">المعاينة السريعة تعمل عندما يحتوي المشروع على <b>index.html</b>. وهي معاينة مؤقتة داخل المتصفح وليست بناءً نهائياً للتطبيق.</p>
-<iframe id="preview" class="preview-frame" sandbox="allow-scripts"></iframe>
-</div>
+<button class="secondary" id="copy">نسخ طلب التوليد</button>
+<a class="secondary btn" id="actions" href="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml" target="_blank" rel="noopener">فتح GitHub Actions</a>
+<div class="status" id="status">جاهز. اضغط «توليد المشروع الآن» لنسخ طلب مضبوط وفتح GitHub Actions.</div>
+<p class="note">مهم: GitHub Pages موقع ثابت ولا يشغّل /api أو Node.js. لذلك لا نحاول إرسال أسرار GitHub أو مفاتيح AI من المتصفح. هذا يمنع تسريب المفاتيح ويحافظ على هندسة GitHub-only.</p>
 </div>
 
 <div class="card">
-<strong>ماذا يحدث؟</strong>
-<p>يمكنك استخدام الواجهة للتوليد والعرض والنسخ اليدوي، أو فتح GitHub Actions للمسار السابق الذي ينشئ مستودعاً مستقلاً للمشروع. لا يتم تعديل main تلقائياً من المعاينة.</p>
+<strong>المسار الصحيح</strong>
+<div class="step">1. CodePilot2 على GitHub Pages يبني الطلب فقط.</div>
+<div class="step">2. GitHub Actions ينفذ الذكاء الاصطناعي باستخدام Secrets.</div>
+<div class="step">3. يتم إنشاء مستودع مستقل للمشروع ونشر الملفات فيه.</div>
+<div class="step">4. نتيجة التشغيل ورابط المستودع تظهران في GitHub Actions، مع Artifact للملفات المولدة.</div>
+</div>
+
+<div class="card">
+<strong>لماذا أزلنا /api؟</strong>
+<p>وجود <code>/api/generate</code> و<code>/api/health</code> في مشروع منشور عبر GitHub Pages كان سبب العطل المعماري: الملفات يمكن أن توجد في المستودع، لكن GitHub Pages لا يحولها إلى Backend. الإبقاء عليها كان يعطي الواجهة انطباعاً أن الخادم موجود بينما هو غير موجود.</p>
 </div>
 </main>
 
 <script>
 const q=id=>document.getElementById(id);
-let generatedFiles=[];
-let currentFileIndex=0;
-
-async function checkBackend(){
- try{
-   const response=await fetch("/api/health",{headers:{"Accept":"application/json"}});
-   const data=await response.json().catch(()=>({}));
-   if(!response.ok) throw new Error(data.error||("HTTP "+response.status));
-   const available=(data.providers||[]).join(", ");
-   setStatus("الخادم يعمل. مفاتيح المزودات المتاحة: "+(available||"لا يوجد مفتاح مُعدّ بعد.")+" — يمكنك التوليد.", available?"ok":"err");
- }catch(error){
-   setStatus("الواجهة تعمل لكن Backend /api غير متاح: "+(error.message||error), "err");
- }
-}
+const actionsUrl="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml";
 
 function buildPrompt(){
- return "الطلب: "+q("prompt").value.trim()+"\nالتقنية: "+q("stack").value+"\nالمنصة: "+q("platform").value+"\nاسم المشروع: "+q("project").value+"\nالمزود: "+q("provider").value;
+  return [
+    "وصف التطبيق: "+q("prompt").value.trim(),
+    "التقنية: "+q("stack").value,
+    "المنصة: "+q("platform").value,
+    "اسم المشروع: "+q("project").value.trim(),
+    "المزود: "+q("provider").value
+  ].join("\n");
 }
 function setStatus(message,kind){
- q("status").textContent=message;
- q("status").className="status "+(kind||"");
+  q("status").textContent=message;
+  q("status").className="status "+(kind||"");
 }
-function showFile(index){
- currentFileIndex=Number(index)||0;
- const file=generatedFiles[currentFileIndex];
- if(!file)return;
- q("codeView").value=file.content;
- q("fileInfo").textContent=file.path+" — "+file.content.length+" حرف";
-}
-function escapeHtml(text){
- return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-function buildPreview(){
- const htmlFile=generatedFiles.find(f=>f.path==="index.html"||f.path.endsWith("/index.html"));
- if(!htmlFile){
-   q("preview").srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html للمعاينة</h3><p>هذه المعاينة مخصصة حالياً لمشاريع HTML/CSS/JS/PWA.</p></body>";
-   return;
- }
- let html=htmlFile.content;
- const filesByPath=new Map(generatedFiles.map(f=>[f.path,f]));
- html=html.replace(/<link([^>]+)href=["']([^"']+\.css)["']([^>]*)>/gi,(m,a,path,c)=>{
-   const f=filesByPath.get(path.replace(/^\.\//,""));
-   return f?"<style>\n"+f.content+"\n</style>":m;
- });
- html=html.replace(/<script([^>]+)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi,(m,a,path,c)=>{
-   const f=filesByPath.get(path.replace(/^\.\//,""));
-   return f?"<script>\n"+f.content+"\n<\/script>":m;
- });
- q("preview").srcdoc=html;
+async function copyText(text){
+  try{await navigator.clipboard.writeText(text);return true}
+  catch{
+    const area=document.createElement("textarea");
+    area.value=text;document.body.appendChild(area);area.select();
+    const ok=document.execCommand("copy");area.remove();return ok;
+  }
 }
 q("generate").onclick=async()=>{
- const prompt=q("prompt").value.trim();
- if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return}
- q("generate").disabled=true;
- setStatus("جارٍ توليد المشروع...",""); 
- try{
-   const response=await fetch("/api/generate",{
-     method:"POST",
-     headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({
-       prompt,
-       provider:q("provider").value,
-       stack:q("stack").value,
-       platform:q("platform").value,
-       project:q("project").value
-     })
-   });
-   const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
-   generatedFiles=Array.isArray(data.files)?data.files:[];
-   if(!generatedFiles.length)throw new Error("لم يُرجع الخادم ملفات.");
-   q("files").innerHTML="";
-   generatedFiles.forEach((file,i)=>{
-     const option=document.createElement("option");
-     option.value=i;option.textContent=file.path;
-     q("files").appendChild(option);
-   });
-   q("files").onchange=()=>showFile(q("files").value);
-   q("summary").textContent=(data.summary||"تم توليد المشروع.")+" — المزود: "+(data.provider||q("provider").value)+(data.model?" / "+data.model:"");
-   q("output").style.display="block";
-   showFile(0);
-   buildPreview();
-   setStatus("تم توليد المشروع بنجاح. يمكنك رؤية الملفات ونسخها أو فتح المعاينة.","ok");
-   q("output").scrollIntoView({behavior:"smooth",block:"start"});
- }catch(error){
-   setStatus("فشل التوليد: "+(error.message||error),"err");
- }finally{
-   q("generate").disabled=false;
- }
+  const prompt=q("prompt").value.trim();
+  const project=q("project").value.trim();
+  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return}
+  if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(project)){
+    setStatus("اسم المشروع غير صالح لـ GitHub. استخدم أحرفاً وأرقاماً و- أو _ أو . فقط.","err");return
+  }
+  const text=buildPrompt();
+  const copied=await copyText(text);
+  setStatus(
+    copied
+      ? "تم نسخ طلب التوليد. افتح GitHub Actions، اضغط Run workflow، ثم الصق الطلب في خانة الوصف واضبط باقي الخيارات."
+      : "افتح GitHub Actions ثم الصق الطلب الظاهر في زر «نسخ طلب التوليد».",
+    "ok"
+  );
+  window.open(actionsUrl,"_blank","noopener");
 };
 q("copy").onclick=async()=>{
- const p=buildPrompt();
- if(!q("prompt").value.trim()){setStatus("اكتب وصف التطبيق أولاً.","err");return}
- try{await navigator.clipboard.writeText(p);q("copy").textContent="تم النسخ ✓";setTimeout(()=>q("copy").textContent="نسخ الطلب",1600)}
- catch{alert(p)}
+  const prompt=q("prompt").value.trim();
+  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return}
+  const ok=await copyText(buildPrompt());
+  setStatus(ok?"تم نسخ طلب التوليد ✓":"تعذر النسخ تلقائياً؛ استخدم زر GitHub Actions ثم أدخل البيانات يدوياً.",ok?"ok":"err");
 };
-q("copyCode").onclick=async()=>{
- const text=q("codeView").value;
- try{await navigator.clipboard.writeText(text);q("copyCode").textContent="تم نسخ الكود ✓";setTimeout(()=>q("copyCode").textContent="نسخ الكود",1600)}
- catch{alert(text)}
-};
-q("copyPath").onclick=async()=>{
- const path=generatedFiles[currentFileIndex]?.path||"";
- try{await navigator.clipboard.writeText(path);q("copyPath").textContent="تم نسخ المسار ✓";setTimeout(()=>q("copyPath").textContent="نسخ مسار الملف",1600)}
- catch{alert(path)}
-};
-q("codeView").addEventListener("input",()=>{
- if(generatedFiles[currentFileIndex]){generatedFiles[currentFileIndex].content=q("codeView").value;buildPreview()}
-});
-checkBackend();
-document.querySelectorAll(".tab").forEach(button=>{
- button.onclick=()=>{
-   document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-   document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
-   button.classList.add("active");
-   q(button.dataset.tab==="code"?"codePanel":"previewPanel").classList.add("active");
-   if(button.dataset.tab==="preview")buildPreview();
- };
-});
+q("actions").onclick=()=>setStatus("افتح GitHub Actions ثم اختر CodePilot - Generate Project واضغط Run workflow.","");
 </script>
 </body>
 </html>
