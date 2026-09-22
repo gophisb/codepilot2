@@ -87,7 +87,7 @@ jobs:
           root.mkdir()
           for item in files:
             path=str(item.get("path","")); content=str(item.get("content",""))
-            if not re.fullmatch(r"[A-Za-z0-9._/-]+",path) or path.startswith("/") or ".." in path or len(path)>240:raise SystemExit("Invalid file path: "+path)
+            if not re.fullmatch(r"[A-Za-z0-9._/-]+",path) or path.startswith("/") or ".." in path or path==".github" or path.startswith(".github/") or len(path)>240:raise SystemExit("Invalid file path: "+path)
             target=root/path; target.parent.mkdir(parents=True,exist_ok=True); target.write_text(content,encoding="utf-8")
           pathlib.Path("generation-summary.md").write_text("# CodePilot\n\n"+str(result.get("summary",""))+"\n",encoding="utf-8")
           PY
