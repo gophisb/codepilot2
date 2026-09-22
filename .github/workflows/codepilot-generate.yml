@@ -349,6 +349,60 @@ jobs:
             f.write("**Load into CodePilot2-gophisb:** paste the repository URL into the loader.\n")
           pathlib.Path("target_repo.txt").write_text(repo["clone_url"],encoding="utf-8")
 
+      - name: Configure GitHub Pages
+        env:
+          GH_TOKEN: \${{ secrets.GH_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,pathlib
+
+          token=os.environ["GH_TOKEN"]
+          owner=os.environ["GITHUB_REPOSITORY_OWNER"]
+          project=os.environ["PROJECT"].strip()
+          api="https://api.github.com/repos/"+owner+"/"+project+"/pages"
+          headers={
+            "Accept":"application/vnd.github+json",
+            "Authorization":"Bearer "+token,
+            "X-GitHub-Api-Version":"2026-03-10",
+            "Content-Type":"application/json"
+          }
+
+          def request(method,url,payload=None):
+            data=json.dumps(payload).encode() if payload is not None else None
+            req=urllib.request.Request(url,data=data,headers=headers,method=method)
+            try:
+              with urllib.request.urlopen(req,timeout=30) as r:
+                body=r.read().decode("utf-8","replace")
+                return r.status, (json.loads(body) if body else {})
+            except urllib.error.HTTPError as e:
+              body=e.read().decode("utf-8","replace")
+              return e.code, body
+
+          status,body=request("POST",api,{"source":{"branch":"main","path":"/"}})
+          if status not in (201,202,409):
+            raise SystemExit("GitHub Pages configuration failed: HTTP "+str(status)+" "+str(body)[:1200])
+
+          if status==409:
+            status2,body2=request("GET",api)
+            if status2!=200:
+              raise SystemExit("GitHub Pages already exists but could not be read: HTTP "+str(status2)+" "+str(body2)[:1200])
+            body=body2
+
+          pages_url="https://"+owner+".github.io/"+project+"/"
+          pathlib.Path("pages-url.txt").write_text(pages_url+"\n",encoding="utf-8")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+            f.write("\n## Public GitHub Pages\n\n**URL:** "+pages_url+"\n\nSource: \`main\` / \`/\`\n")
+          print("GitHub Pages URL: "+pages_url)
+          PY
+
+      - name: Verify GitHub Pages entry point
+        run: |
+          set -euo pipefail
+          test -f generated-project/index.html
+          test -s pages-url.txt
+          echo "Pages entry point and URL are ready."
+
       - name: Publish project to new repository
         env:
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
