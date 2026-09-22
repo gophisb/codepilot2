@@ -410,8 +410,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          git config user.name "CodePilot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           CLONE_URL="$(cat target_repo.txt)"
           echo "Target repository: $CLONE_URL"
 
@@ -421,6 +419,8 @@ jobs:
 
           cd generated-project
           git init
+          git config user.name "CodePilot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b main
           git add .
           git commit -m "CodePilot: initial project"
