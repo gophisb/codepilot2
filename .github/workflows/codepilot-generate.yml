@@ -72,7 +72,7 @@ jobs:
       - name: Generate project with AI
         run: |
           python3 - <<'PY'
-          import os,json,urllib.request,urllib.parse,urllib.error,pathlib,re,shutil
+          import os,json,urllib.request,urllib.parse,urllib.error,pathlib,re,shutil,time
 
           provider=os.environ["PROVIDER"].strip().lower()
           prompt=os.environ["PROMPT"].strip()
@@ -91,7 +91,7 @@ jobs:
           {"files":[{"path":"relative/path","content":"full file content"}],"summary":"short summary"}.
           Generate a complete runnable project. Use safe relative paths. Never include secrets.
           Do not create .github files. Avoid unnecessary dependencies. Respect the requested stack and platform.
-          For web/PWA projects, include a complete index.html and all required local CSS/JS files.
+          For web/PWA projects, include a complete index.html and all required local CSS/JS files.\n          Keep generated projects compact: prefer 4-12 files and avoid unnecessarily large source files.
           """
 
           user=f"Request: {prompt}\nStack: {stack}\nPlatform: {platform}\nProject: {project}"
@@ -137,7 +137,7 @@ jobs:
               "generationConfig":{
                 "responseMimeType":"application/json",
                 "responseSchema":schema,
-                "maxOutputTokens":24000,
+                "maxOutputTokens":16000,
                 "thinkingConfig":{"thinkingLevel":"medium"}
               }
             }
@@ -150,18 +150,32 @@ jobs:
           def call_openrouter():
             key=keys["openrouter"]
             if not key: raise RuntimeError("OPENROUTER_API_KEY is missing")
-            data=post("https://openrouter.ai/api/v1/chat/completions",{
-              "model":"openrouter/free",
-              "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-              "temperature":0.2,
-              "max_tokens":24000
-            },{
-              "Authorization":"Bearer "+key,
-              "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
-              "X-Title":"CodePilot2-gophisb"
-            })
-            try:return data["choices"][0]["message"]["content"]
-            except (KeyError,IndexError,TypeError) as e:raise RuntimeError("OpenRouter invalid response: "+str(e))
+            last=None
+            for attempt in range(1,4):
+              try:
+                data=post("https://openrouter.ai/api/v1/chat/completions",{
+                  "model":"openrouter/free",
+                  "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+                  "temperature":0.1,
+                  "max_tokens":16000
+                },{
+                  "Authorization":"Bearer "+key,
+                  "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
+                  "X-Title":"CodePilot2-gophisb"
+                })
+                content=data["choices"][0]["message"]["content"]
+                if not isinstance(content,str) or not content.strip():
+                  raise RuntimeError("OpenRouter returned empty content")
+                finish=(data.get("choices",[{}])[0].get("finish_reason") or "").lower()
+                if finish in ("length","max_tokens"):
+                  raise RuntimeError("OpenRouter output was truncated (finish_reason="+finish+")")
+                return content
+              except Exception as e:
+                last=e
+                print(f"OpenRouter attempt {attempt}/3 failed: {str(e)[:900]}")
+                if attempt<3:
+                  time.sleep(4*attempt)
+            raise RuntimeError("OpenRouter failed after 3 attempts: "+str(last))
 
           def call_chat(name):
             key=keys.get(name)
@@ -171,17 +185,26 @@ jobs:
             data=post(urls[name],{
               "model":models[name],
               "messages":[{"role":"system","content":system},{"role":"user","content":user}],
-              "temperature":0.2,"max_tokens":24000
+              "temperature":0.1,"max_tokens":16000
             },{"Authorization":"Bearer "+key})
             try:return data["choices"][0]["message"]["content"]
             except (KeyError,IndexError,TypeError) as e:raise RuntimeError(name+" invalid response: "+str(e))
 
           if provider=="gemini":
-            try:
-              text=call_gemini()
-              used_model="gemini-3.8-flash"
-            except Exception as first:
-              print("Gemini failed; trying OpenRouter fallback: "+str(first)[:700])
+            text=None
+            first=None
+            for attempt in range(1,3):
+              try:
+                text=call_gemini()
+                used_model="gemini-3.8-flash"
+                break
+              except Exception as e:
+                first=e
+                print(f"Gemini attempt {attempt}/2 failed: {str(e)[:900]}")
+                if attempt<2:
+                  time.sleep(5)
+            if text is None:
+              print("Gemini unavailable; trying OpenRouter fallback: "+str(first)[:900])
               text=call_openrouter()
               used_model="openrouter/free"
           elif provider=="openrouter":
