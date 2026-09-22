@@ -5,7 +5,10 @@ on:
     types: [codepilot_generate]
 
 jobs:
-  test:
+  receive:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "CodePilot repository dispatch is alive"
+      - name: Receive request
+        run: |
+          echo "CodePilot repository dispatch received"
+          echo "Issue: ${{ github.event.client_payload.issue_number }}"
