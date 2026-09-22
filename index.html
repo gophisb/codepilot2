@@ -516,7 +516,7 @@ function buildPreview(){
    const f=key&&map.get(key);
    return f?"<script"+(c||"")+" data-codepilot-preview>\n"+f.content+"\n<\/script>":m;
  });
- const bridge="<script>window.addEventListener('error',function(e){document.body.insertAdjacentHTML('afterbegin','<pre style="white-space:pre-wrap;background:#fee;color:#900;padding:12px;font:14px system-ui">CodePilot Preview Error: '+String(e.message||e.error||e).replace(/[&<>]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x]})+'</pre>');});<\/script>";
+ const bridge='<script>window.addEventListener("error",function(e){document.body.insertAdjacentHTML("afterbegin","<pre style="white-space:pre-wrap;background:#fee;color:#900;padding:12px;font:14px system-ui">CodePilot Preview Error: "+String(e.message||e.error||e).replace(/[&<>]/g,function(x){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[x]})+"</pre>");});<\\/script>';
  html=html.replace(/<head([^>]*)>/i,"<head$1>"+bridge);
  frame.srcdoc=html;
 }
