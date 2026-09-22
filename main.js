@@ -382,18 +382,26 @@ function buildPreview(){
  }
  const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
  let html=htmlFile.content;
- html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
+
+ // The preview runs from srcdoc, so relative files cannot be fetched from the
+ // CodePilot2 site. Inline local CSS/JS into the preview instead.
+ html=html.replace(/<link([^>]*?)href=["']([^"']+\.css)(?:\\?[^"']*)?["']([^>]*)>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   return f?"<style data-codepilot-preview>\n"+f.content+"\n</style>":m;
+   return f ? "<style data-codepilot-preview>\\n"+f.content+"\\n</style>" : m;
  });
- html=html.replace(/<script([^>]*?)src=["']([^"']+\.js)(?:\?[^"']*)?["']([^>]*)><\/script>/gi,(m,a,p,c)=>{
+
+ html=html.replace(/<script([^>]*?)src=["']([^"']+\\.js)(?:\\?[^"']*)?["']([^>]*)><\\/script>/gi,(m,a,p,c)=>{
    const key=resolvePreviewPath(htmlFile.path,p);
    const f=key&&map.get(key);
-   return f?"<script"+(c||"")+" data-codepilot-preview>\n"+f.content+"\n<\/script>":m;
+   if(!f)return m;
+   const attrs=(a+c).replace(/\\s+type=["'][^"']*["']/gi,"").trim();
+   return "<script"+(attrs?" "+attrs:"")+" data-codepilot-preview>\\n"+f.content+"\\n<\\/script>";
  });
- const bridge='<script type="module" src="./app.js?v=20260922-rootfix"><' + '/script>';
- html=html.replace(/<head([^>]*)>/i,"<head$1>"+bridge);
+
+ // Never inject CodePilot2's own app.js into the user's project preview.
+ // It belongs to the editor, not to the generated application.
+ html=html.replace(/<base\\b[^>]*>/gi,"");
  frame.srcdoc=html;
 }
 function safeRepoUrl(value){
