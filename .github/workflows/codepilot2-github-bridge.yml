@@ -9,37 +9,53 @@ permissions:
   contents: read
 
 jobs:
-  bridge:
+  build:
     if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, 'CodePilot2:')
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       ISSUE_BODY: ${{ github.event.issue.body }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Parse CodePilot2 request
         run: |
           python3 - <<'PY'
           import os,re,base64
           body=os.environ.get("ISSUE_BODY","")
-          m=re.search(r"<!-- CodePilot2 request\n(.*?)\n-->",body,re.S)
-          if not m: raise SystemExit("Not a CodePilot2 request issue.")
+          match=re.search(r"<!-- CodePilot2 request\n(.*?)\n-->",body,re.S)
+          if not match:
+              raise SystemExit("Not a CodePilot2 request issue.")
           meta={}
-          for line in m.group(1).splitlines():
+          for line in match.group(1).splitlines():
               if "=" in line:
-                  k,v=line.split("=",1); meta[k.strip()]=v.strip()
+                  k,v=line.split("=",1)
+                  meta[k.strip()]=v.strip()
           required=["request_id","project","provider","stack","platform","prompt_b64"]
           missing=[k for k in required if not meta.get(k)]
-          if missing: raise SystemExit("Missing fields: "+", ".join(missing))
+          if missing:
+              raise SystemExit("Missing fields: "+", ".join(missing))
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]):
               raise SystemExit("Invalid project name.")
-          try: prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
-          except Exception as e: raise SystemExit("Invalid prompt encoding: "+str(e))
-          if not prompt.strip(): raise SystemExit("Prompt is empty.")
+          try:
+              prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
+          except Exception as e:
+              raise SystemExit("Invalid prompt encoding: "+str(e))
+          if not prompt.strip():
+              raise SystemExit("Prompt is empty.")
           with open("/tmp/request.env","w",encoding="utf-8") as f:
               for k in ["request_id","project","provider","stack","platform"]:
                   f.write(k.upper()+"="+meta[k]+"\n")
-          with open("/tmp/prompt.txt","w",encoding="utf-8") as f: f.write(prompt)
+          with open("/tmp/prompt.txt","w",encoding="utf-8") as f:
+              f.write(prompt)
           PY
           cat /tmp/request.env >> "$GITHUB_ENV"
           {
@@ -49,23 +65,97 @@ jobs:
             echo "__CODEPILOT_PROMPT__"
           } >> "$GITHUB_ENV"
 
-      - name: Dispatch generation workflow
+      - name: Generate project
+        run: python3 .github/scripts/generate.py
+
+      - name: Publish project to GitHub
+        shell: bash
         run: |
           set -euo pipefail
-          test -n "$GH_TOKEN"
-          gh workflow run codepilot-generate.yml \
-            --repo "${{ github.repository }}" \
-            --ref main \
-            -f prompt="$PROMPT" \
-            -f provider="$PROVIDER" \
-            -f stack="$STACK" \
-            -f platform="$PLATFORM" \
-            -f project="$PROJECT" \
-            -f request_id="$REQUEST_ID"
+          test -d generated-project
+          test -n "$(find generated-project -type f -print -quit)"
+          (cd generated-project && zip -qr ../codepilot-generated-project.zip .)
 
-      - name: Mark issue as processed
+          owner="$(gh api user --jq .login)"
+          candidate="$PROJECT"
+          n=2
+          while gh repo view "$owner/$candidate" >/dev/null 2>&1; do
+            candidate="$PROJECT-$n"
+            n=$((n+1))
+          done
+
+          if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
+            mkdir -p generated-project/.github/workflows
+            cat > generated-project/.github/workflows/deploy-pages.yml <<'YAML'
+name: Build and deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v6
+        if: hashFiles("package.json") != ""
+        with:
+          node-version: 20
+      - name: Install
+        if: hashFiles("package.json") != ""
+        run: npm install
+      - name: Build
+        if: hashFiles("package.json") != ""
+        run: npm run build --if-present
+      - name: Select output
+        run: |
+          if [ -d dist ]; then echo "PAGES_DIR=dist" >> "$GITHUB_ENV"
+          elif [ -d build ]; then echo "PAGES_DIR=build" >> "$GITHUB_ENV"
+          elif [ -d out ]; then echo "PAGES_DIR=out" >> "$GITHUB_ENV"
+          else echo "PAGES_DIR=." >> "$GITHUB_ENV"
+          fi
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ env.PAGES_DIR }}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/deploy-pages@v4
+YAML
+          fi
+
+          cd generated-project
+          git init
+          git config user.name "CodePilot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b main
+          git add .
+          git commit -m "CodePilot: initial project"
+          gh repo create "$owner/$candidate" --public --description "Generated by CodePilot2-gophisb" --source . --remote origin --push
+          cd ..
+
+          if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
+            gh api --method POST "repos/$owner/$candidate/pages" -f build_type=workflow -f "source[branch]=main" -f "source[path]=/" >/dev/null 2>&1 || true
+            printf "https://%s.github.io/%s/\n" "$owner" "$candidate" > pages-url.txt
+          fi
+          printf "https://github.com/%s/%s\n" "$owner" "$candidate" > target-repo.txt
+          printf "# CodePilot2 generation\n\nRepository: https://github.com/%s/%s\n" "$owner" "$candidate" > codepilot-result.txt
+          echo "Repository: https://github.com/$owner/$candidate" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment result
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
-            --body "تم استلام طلب CodePilot2 وتشغيل GitHub Actions. معرّف الطلب: $REQUEST_ID."
+          repo_url="$(cat target-repo.txt)"
+          body="تم تشغيل CodePilot2 بنجاح.\n\nالمستودع: $repo_url"
+          if [ -f pages-url.txt ]; then body="$body\n\nGitHub Pages: $(cat pages-url.txt)"; fi
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "$body"
