@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A0F1E">
 <title>CodePilot2-gophisb</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
 :root{--bg:#0A0F1E;--card:#111827;--input:#1A2236;--accent:#00D4AA;--text:#F0F4FF;--muted:#7D8AA5;--border:rgba(255,255,255,.08);--danger:#fca5a5;--ok:#6ee7b7}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
@@ -44,15 +45,21 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <button class="primary" id="githubLogin">ربط GitHub</button>
 <div class="status" id="githubStatus">GitHub غير متصل.</div>
 <button class="primary" id="generate">توليد المشروع الآن عبر GitHub Actions</button>
-<button class="secondary" id="copyPrompt">نسخ طلب التوليد</button>
-<a class="secondary btn" id="actions" href="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml" target="_blank" rel="noopener">فتح Workflow مباشرة</a>
+
 <div class="status" id="status">جاهز.</div>
 <p class="note">الأمان: لا توجد مفاتيح AI داخل الصفحة. تسجيل الدخول يتم عبر GitHub App، ثم تُرسل عملية التوليد إلى GitHub Actions بصلاحية Actions Write. رمز الدخول لا يُحفظ في المستودع.</p>
 <div id="deviceBox" class="status hidden"></div>
 </div>
 
 <div class="card">
-<h2>2 — المسار التشغيلي</h2>
+<h2>2 — فتح مشروع ZIP</h2>
+<p class="note">ارفع مشروعاً مضغوطاً بصيغة ZIP. سيتم فكّه داخل CodePilot2 مباشرة، ثم تظهر الملفات والكود والمعاينة دون تشغيل الذكاء الاصطناعي أو GitHub Actions.</p>
+<input id="zipInput" type="file" accept=".zip,application/zip">
+<div class="status" id="zipStatus">لم يتم اختيار ملف ZIP.</div>
+</div>
+
+<div class="card">
+<h2>3 — المسار التشغيلي</h2>
 <div class="steps">
 <div class="step">① الفكرة<br>والمواصفات</div>
 <div class="step">② Actions<br>يولد المشروع</div>
@@ -62,7 +69,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 </div>
 
 <div class="card">
-<h2>3 — تحميل المشروع الناتج</h2>
+<h2>4 — تحميل مشروع GitHub</h2>
 <p class="note">بعد نجاح Workflow وإنشاء المستودع، الصق رابط المستودع العام هنا. لن تحتاج إلى نسخ الملفات يدوياً.</p>
 <div class="repo-row">
 <input id="repoUrl" placeholder="https://github.com/gophisb/my-codepilot-app">
@@ -72,7 +79,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 </div>
 
 <div class="card output" id="output">
-<h2>4 — الكود والملفات</h2>
+<h2>5 — الكود والملفات</h2>
 <p id="summary"></p>
 <div class="tabs">
 <button class="secondary tab active" data-tab="code">الكود والملفات</button>
@@ -258,9 +265,40 @@ q("generate").onclick=async()=>{
    setStatus("فشل التوليد: "+(e.message||e),"err");
  }finally{q("generate").disabled=false;}
 };
-q("copyPrompt").onclick=async()=>{
- if(!q("prompt").value.trim()){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
- const ok=await copyText(buildPrompt());setStatus(ok?"تم نسخ طلب التوليد ✓":"تعذر النسخ.",""+(ok?"ok":"err"));
+
+async function loadZipProject(file){
+ if(!window.JSZip)throw new Error("مكوّن ZIP لم يتم تحميله بعد؛ أعد فتح الصفحة.");
+ if(!file)throw new Error("اختر ملف ZIP أولاً.");
+ if(file.size>50*1024*1024)throw new Error("ملف ZIP أكبر من 50MB.");
+ const zip=await JSZip.loadAsync(file,{createFolders:false,checkCRC32:false});
+ const entries=[]; let total=0;
+ for(const name of Object.keys(zip.files)){
+  const entry=zip.files[name]; if(entry.dir)continue;
+  const safe=name.replace(/\\/g,"/").replace(/^\/+/,"");
+  if(!safe||safe.split("/").some(p=>p===".."||p===""))continue;
+  if(/(^|\/)node_modules(\/|$)|(^|\/)\.git(\/|$)|(^|\/)dist(\/|$)|(^|\/)build(\/|$)/i.test(safe))continue;
+  const content=await entry.async("string");
+  if(content.includes("\u0000"))continue;
+  total+=content.length;
+  if(total>12*1024*1024)throw new Error("حجم الملفات النصية بعد الفك أكبر من 12MB.");
+  entries.push({path:safe,content});
+  if(entries.length>=200)break;
+ }
+ if(!entries.length)throw new Error("لم نجد ملفات نصية قابلة للعرض داخل ZIP.");
+ generatedFiles=entries;
+ q("files").innerHTML="";
+ generatedFiles.forEach((f,i)=>{const o=document.createElement("option");o.value=i;o.textContent=f.path;q("files").appendChild(o);});
+ q("files").onchange=()=>showFile(q("files").value);
+ q("summary").textContent="تم فتح ZIP: "+generatedFiles.length+" ملفاً نصياً.";
+ q("output").style.display="block"; showFile(0); buildPreview();
+ q("loadStatus").textContent="تم فتح مشروع ZIP داخل CodePilot2 ✓";q("loadStatus").className="status ok";
+ q("output").scrollIntoView({behavior:"smooth",block:"start"});
+}
+q("zipInput").onchange=async()=>{
+ const file=q("zipInput").files[0]; if(!file)return;
+ const s=q("zipStatus");s.textContent="جارٍ فك ZIP وفحص الملفات...";s.className="status";
+ try{await loadZipProject(file);s.textContent="تم فتح المشروع من ZIP ✓";s.className="status ok";}
+ catch(e){s.textContent="فشل فتح ZIP: "+(e.message||e);s.className="status err";}
 };
 
 function showFile(index){
