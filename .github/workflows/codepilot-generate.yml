@@ -350,6 +350,7 @@ jobs:
           pathlib.Path("target_repo.txt").write_text(repo["clone_url"],encoding="utf-8")
 
       - name: Configure GitHub Pages
+        if: contains(inputs.platform, 'Web') || contains(inputs.platform, 'PWA')
         env:
           GH_TOKEN: \${{ secrets.GH_REPO_TOKEN }}
         run: |
@@ -397,6 +398,7 @@ jobs:
           PY
 
       - name: Verify GitHub Pages entry point
+        if: contains(inputs.platform, 'Web') || contains(inputs.platform, 'PWA')
         run: |
           set -euo pipefail
           test -f generated-project/index.html
