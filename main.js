@@ -1,93 +1,85 @@
 const q=id=>document.getElementById(id);
-const actionsUrl="https://github.com/gophisb/codepilot2/actions/workflows/codepilot-generate.yml";
 const apiBase="https://api.github.com";
-const clientId="Ov23licZ5dcPUjkYTYA";
+const githubOwner="gophisb";
+const bridgeUrl="https://github.com/gophisb/codepilot2/issues/new";
 const workflowPath="codepilot-generate.yml";
 let generatedFiles=[], currentFileIndex=0;
-let githubToken=localStorage.getItem("codepilot2_github_token")||sessionStorage.getItem("codepilot2_github_token")||"";
-let githubLoginName=localStorage.getItem("codepilot2_github_login")||sessionStorage.getItem("codepilot2_github_login")||"";
 let pollTimer=null;
+let githubToken="";
+let githubLoginName=githubOwner;
 
-function githubHeaders(){return {"Accept":"application/vnd.github+json","Authorization":"Bearer "+githubToken,"X-GitHub-Api-Version":"2026-03-10"};}
-async function authedJson(url,options={}){
- const r=await fetch(url,{...options,headers:{...githubHeaders(),...(options.headers||{})}});
- const data=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(data.message||("GitHub API HTTP "+r.status));
- return data;
-}
 function setGithubStatus(message,kind){q("githubStatus").textContent=message;q("githubStatus").className="status "+(kind||"");}
-async function ensureGithubConnection(){
- if(githubToken){await verifyGithubSession();if(githubToken)return true;}
- try{await startDeviceFlow();return !!githubToken;}catch(e){
-   const msg=String(e.message||e);
-   if(msg.includes("device_flow_disabled"))throw new Error("ربط GitHub يحتاج تفعيل Device Flow في إعدادات تطبيق GitHub المرتبط بـ CodePilot2.");
-   throw e;
- }
-}
 function renderGithubState(){
- if(githubToken&&githubLoginName){
-  setGithubStatus("متصل بـ GitHub باسم "+githubLoginName+" ✓","ok");
-  q("githubLogin").textContent="فصل GitHub";
- }else{
-  setGithubStatus("GitHub غير متصل.","");
-  q("githubLogin").textContent="ربط GitHub";
- }
+  setGithubStatus("GitHub جاهز عبر جسر GitHub Actions — لا يوجد Token محفوظ في CodePilot2.","ok");
+  q("githubLogin").textContent="فتح GitHub";
 }
-async function startDeviceFlow(){
- const r=await fetch("https://github.com/login/device/code?client_id="+encodeURIComponent(clientId)+"&scope="+encodeURIComponent("repo workflow"),{
-   method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"}
- });
- const d=await r.json();
- if(!r.ok)throw new Error(d.error_description||d.error||("Device Flow HTTP "+r.status));
- q("deviceBox").classList.remove("hidden");
- q("deviceBox").innerHTML="";
- const title=document.createElement("strong");title.textContent="رمز ربط GitHub: "+d.user_code;
- const br=document.createElement("br");
- const info=document.createElement("span");info.textContent="افتح صفحة GitHub التالية، أدخل الرمز، ثم اترك هذه الصفحة مفتوحة.";
- const link=document.createElement("a");link.href=d.verification_uri;link.target="_blank";link.rel="noopener";link.textContent=" فتح صفحة التحقق";
- q("deviceBox").append(title,br,info,link);
- const interval=Math.max(Number(d.interval)||5,5)*1000;
- const deadline=Date.now()+((Number(d.expires_in)||900)*1000);
- while(Date.now()<deadline){
-   await new Promise(r=>setTimeout(r,interval));
-   const tokenUrl="https://github.com/login/oauth/access_token?client_id="+encodeURIComponent(clientId)+"&device_code="+encodeURIComponent(d.device_code)+"&grant_type=urn:ietf:params:oauth:grant-type:device_code";
-   const tr=await fetch(tokenUrl,{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/x-www-form-urlencoded"}});
-   const td=await tr.json().catch(()=>({}));
-   if(td.access_token){
-     githubToken=td.access_token;
-     localStorage.setItem("codepilot2_github_token",githubToken);sessionStorage.setItem("codepilot2_github_token",githubToken);
-     const me=await authedJson(apiBase+"/user");
-     githubLoginName=me.login||"GitHub";
-     localStorage.setItem("codepilot2_github_login",githubLoginName);sessionStorage.setItem("codepilot2_github_login",githubLoginName);
-     q("deviceBox").classList.add("hidden");renderGithubState();return;
-   }
-   if(td.error==="authorization_pending")continue;
-   if(td.error==="slow_down"){await new Promise(r=>setTimeout(r,5000));continue;}
-   throw new Error(td.error_description||td.error||"فشل ربط GitHub");
- }
- throw new Error("انتهت مدة رمز الربط؛ أعد المحاولة.");
+function b64utf8(value){return btoa(unescape(encodeURIComponent(String(value||""))));}
+function buildBridgeBody({requestId,project,provider,stack,platform,prompt}){
+  return [
+    "<!-- CodePilot2 request",
+    "request_id="+requestId,
+    "project="+project,
+    "provider="+provider,
+    "stack="+stack,
+    "platform="+platform,
+    "prompt_b64="+b64utf8(prompt),
+    "-->",
+    "",
+    "CodePilot2 request generated from GitHub Pages."
+  ].join("\n");
 }
-async function verifyGithubSession(){
- if(!githubToken)return;
- try{
-   const me=await authedJson(apiBase+"/user");
-   githubLoginName=me.login||"GitHub";sessionStorage.setItem("codepilot2_github_login",githubLoginName);renderGithubState();
- }catch{
-   githubToken="";githubLoginName="";
-   localStorage.removeItem("codepilot2_github_token");localStorage.removeItem("codepilot2_github_login");sessionStorage.removeItem("codepilot2_github_token");sessionStorage.removeItem("codepilot2_github_login");
-   renderGithubState();
- }
+function openGithubRequest(data){
+  const title="CodePilot2: "+data.project+" ["+data.requestId+"]";
+  const url=bridgeUrl+"?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(buildBridgeBody(data));
+  const w=window.open(url,"_blank","noopener");
+  if(!w)window.location.href=url;
+  return url;
 }
-q("githubLogin").onclick=async()=>{
- if(githubToken){
-   githubToken="";githubLoginName="";
-   sessionStorage.removeItem("codepilot2_github_token");sessionStorage.removeItem("codepilot2_github_login");
-   renderGithubState();setStatus("تم فصل GitHub.","ok");return;
- }
- q("githubLogin").disabled=true;setGithubStatus("جارٍ بدء ربط GitHub...","");
- try{await startDeviceFlow();setStatus("تم ربط GitHub. يمكنك الآن تشغيل التوليد.","ok");}
- catch(e){setGithubStatus("فشل الربط: "+(e.message||e),"err");}
- finally{q("githubLogin").disabled=false;}
+async function waitForRunPublic(requestId){
+  const deadline=Date.now()+20*60*1000;
+  while(Date.now()<deadline){
+    const r=await fetch(apiBase+"/repos/"+githubOwner+"/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=50&event=workflow_dispatch",{cache:"no-store"});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(data.message||("GitHub Actions HTTP "+r.status));
+    const run=(data.workflow_runs||[]).find(x=>String(x.name||"").includes(requestId)||String(x.display_title||"").includes(requestId));
+    if(run){
+      if(run.status==="completed")return run;
+      setStatus("3/5 GitHub Actions يعمل الآن: "+(run.status||"queued")+"…","ok");
+    }else setStatus("2/5 تم إرسال الطلب إلى GitHub؛ ننتظر تشغيل Actions…","ok");
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  throw new Error("انتهت مهلة انتظار GitHub Actions.");
+}
+async function waitForRepoPublic(owner,project,sinceMs){
+  const deadline=Date.now()+5*60*1000;
+  while(Date.now()<deadline){
+    const r=await fetch(apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project),{cache:"no-store"});
+    if(r.ok){
+      const repo=await r.json();
+      if(new Date(repo.created_at).getTime()>=sinceMs-120000)return repo;
+    }else if(r.status!==404){
+      const d=await r.json().catch(()=>({}));
+      throw new Error(d.message||("GitHub API HTTP "+r.status));
+    }
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  throw new Error("تم تشغيل Actions لكن المستودع الناتج لم يظهر بعد.");
+}
+async function ensureGithubConnection(){return true;}
+
+q("githubLogin").onclick=()=>{
+  const prompt=q("prompt").value.trim();
+  const project=q("project").value.trim()||"my-codepilot-app";
+  const requestId="cp-connect-"+Date.now().toString(36);
+  if(!prompt){
+    setGithubStatus("اكتب وصف التطبيق أولاً، ثم سيُفتح GitHub لإرسال طلب CodePilot2.","");
+    q("prompt").focus(); return;
+  }
+  if(!validProject(project)){
+    setGithubStatus("اسم المشروع يجب أن يكون أحرفاً إنجليزية وأرقاماً و . _ - فقط.","err"); return;
+  }
+  openGithubRequest({requestId,project,provider:q("provider").value,stack:q("stack").value,platform:q("platform").value,prompt});
+  setGithubStatus("تم فتح GitHub. اضغط Submit new issue لإرسال الطلب.","ok");
 };
 
 function buildPrompt(){
@@ -165,42 +157,26 @@ q("generate").onclick=async()=>{
  const prompt=q("prompt").value.trim(), project=q("project").value.trim();
  if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
  if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
- if(!githubToken){
-   try{setStatus("نفتح الآن ربط GitHub…","");if(!(await ensureGithubConnection()))throw new Error("لم يكتمل ربط GitHub.");}
-   catch(e){setStatus("فشل ربط GitHub: "+(e.message||e),"err");return;}
- }
  q("generate").disabled=true;
  const startedAt=Date.now();
  const requestId="cp-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
  try{
-   setStatus("1/4 إرسال الطلب إلى GitHub Actions…","");
-   const response=await authedJson(apiBase+"/repos/gophisb/codepilot2/actions/workflows/"+workflowPath+"/dispatches",{
-     method:"POST",headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({ref:"main",inputs:{prompt,provider:q("provider").value,stack:q("stack").value,platform:q("platform").value,project,request_id:requestId}})
-   });
-   setStatus("2/4 تم تشغيل Actions. نراقب التنفيذ…","ok");
-   const run=await waitForRun(requestId,project);
-   if(run.conclusion!=="success"){
-     throw new Error("فشل Workflow: "+(run.conclusion||run.status)+". افتح سجل Actions للتفاصيل.");
-   }
-   setStatus("3/4 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
-   const repo=await waitForRepo(githubLoginName,project,startedAt);
+   setStatus("1/5 فتح GitHub لإرسال طلب التنفيذ…","");
+   openGithubRequest({requestId,project,provider:q("provider").value,stack:q("stack").value,platform:q("platform").value,prompt});
+   setStatus("1/5 افتح GitHub واضغط Submit new issue. سيكمل CodePilot2 المتابعة تلقائياً.","ok");
+   const run=await waitForRunPublic(requestId);
+   if(run.conclusion!=="success")throw new Error("فشل Workflow: "+(run.conclusion||run.status)+". افتح سجل Actions للتفاصيل.");
+   setStatus("4/5 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
+   const repo=await waitForRepoPublic(githubOwner,project,startedAt);
    q("repoUrl").value=repo.html_url;
-   const platform=q("platform").value;
-   if(/web|pwa/i.test(platform)){
-     setStatus("4/5 تم إنشاء المستودع. نتحقق من الرابط العام…","ok");
-     const publicOwner=repo.owner?.login||githubLoginName;
-     const publicUrl=await waitForPages(publicOwner,repo.name);
-     q("publicSiteLink").href=publicUrl;
-     q("publicSiteLink").textContent=publicUrl;
-     q("publicSite").style.display="block";
-   }else{
-     setStatus("4/5 تم إنشاء المستودع بنجاح ✓","ok");
-   }
+   if(/web|pwa/i.test(q("platform").value)){
+     const publicUrl="https://"+githubOwner+".github.io/"+repo.name+"/";
+     q("publicSiteLink").href=publicUrl;q("publicSiteLink").textContent=publicUrl;q("publicSite").style.display="block";
+     setStatus("5/5 تم إنشاء المستودع ✓ يمكنك تحميله الآن.","ok");
+   }else setStatus("5/5 تم إنشاء المستودع بنجاح ✓","ok");
    await loadRepository();
- }catch(e){
-   setStatus("فشل التوليد: "+(e.message||e),"err");
- }finally{q("generate").disabled=false;}
+ }catch(e){setStatus("فشل التوليد: "+(e.message||e),"err");}
+ finally{q("generate").disabled=false;}
 };
 
 async function loadZipProject(file){
