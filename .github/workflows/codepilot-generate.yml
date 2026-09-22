@@ -85,7 +85,7 @@ jobs:
           def call_gemini():
             key=keys["gemini"]
             if not key: raise RuntimeError("GEMINI_API_KEY is missing")
-            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key="+urllib.parse.quote(key)
+            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key="+urllib.parse.quote(key)
             data=post(url,{"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.2,"maxOutputTokens":12000}}, {})
             try:
               return "".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
@@ -131,7 +131,7 @@ jobs:
           if p=="gemini":
             try:
               text=call_gemini()
-              print("AI provider succeeded: Gemini 3.5 Flash")
+              print("AI provider succeeded: Gemini 3.8 Flash")
             except Exception as gemini_error:
               print("Gemini failed; attempting OpenRouter fallback: "+str(gemini_error)[:500])
               try:
@@ -159,6 +159,22 @@ jobs:
             target=root/path; target.parent.mkdir(parents=True,exist_ok=True); target.write_text(content,encoding="utf-8")
           pathlib.Path("generation-summary.md").write_text("# CodePilot\n\n"+str(result.get("summary",""))+"\n",encoding="utf-8")
           PY
+
+      - name: Package generated project
+        run: |
+          cd generated-project
+          zip -qr ../codepilot-generated-project.zip .
+          cd ..
+          printf '%s\n' "# CodePilot2 generation" "" "Project: $PROJECT" "Provider: $PROVIDER" "Stack: $STACK" "Platform: $PLATFORM" > codepilot-result.txt
+
+      - name: Upload generated files artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codepilot-${{ inputs.project }}
+          path: |
+            codepilot-generated-project.zip
+            codepilot-result.txt
+          if-no-files-found: error
 
       - name: Create independent GitHub repository
         env:
