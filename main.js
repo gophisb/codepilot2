@@ -2,7 +2,7 @@ const q=id=>document.getElementById(id);
 const apiBase="https://api.github.com";
 const githubOwner="gophisb";
 const bridgeUrl="https://github.com/gophisb/codepilot2/issues/new";
-const workflowPath="codepilot2-github-bridge.yml";
+const workflowPath="codepilot-run.yml";
 let generatedFiles=[], currentFileIndex=0;
 let pollTimer=null;
 let githubToken="";
@@ -38,7 +38,7 @@ function openGithubRequest(data){
 async function waitForRunPublic(requestId){
   const deadline=Date.now()+20*60*1000;
   while(Date.now()<deadline){
-    const r=await fetch(apiBase+"/repos/"+githubOwner+"/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=50&event=issues",{cache:"no-store"});
+    const r=await fetch(apiBase+"/repos/"+githubOwner+"/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=50&event=repository_dispatch",{cache:"no-store"});
     const data=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(data.message||("GitHub Actions HTTP "+r.status));
     const run=(data.workflow_runs||[]).find(x=>String(x.name||"").includes(requestId)||String(x.display_title||"").includes(requestId));
