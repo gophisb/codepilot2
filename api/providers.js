@@ -14,7 +14,7 @@ const OPENROUTER_FREE_MODELS = [
 const PROVIDERS = {
   gemini: {
     base: 'https://generativelanguage.googleapis.com/v1beta/models',
-    defaultModel: 'gemini-3.5-flash',
+    defaultModel: 'gemini-3.8-flash',
     envKey: 'GEMINI_API_KEY',
     type: 'gemini'
   },
