@@ -363,6 +363,8 @@ jobs:
 
           cd generated-project
           git init
+          # git init creates a fresh local repository, so identity must be configured
+          # after initialization (configuring it before git init is lost).
           git config user.name "CodePilot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b main
