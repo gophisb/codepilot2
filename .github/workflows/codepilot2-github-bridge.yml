@@ -4,54 +4,9 @@ on:
   issues:
     types: [opened]
 
-permissions:
-  issues: write
-  contents: read
-
 jobs:
   bridge:
     if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, 'CodePilot2:')
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
-      ISSUE_BODY: ${{ github.event.issue.body }}
     steps:
-      - name: Send request to CodePilot
-        run: |
-          python3 - <<'PY'
-          import os,re,base64,json,urllib.request
-          body=os.environ["ISSUE_BODY"]
-          m=re.search(r"<!-- CodePilot2 request
-(.*?)
--->",body,re.S)
-          if not m: raise SystemExit("Invalid CodePilot2 request")
-          meta={}
-          for line in m.group(1).splitlines():
-              if "=" in line:
-                  k,v=line.split("=",1); meta[k.strip()]=v.strip()
-          required=["request_id","project","provider","stack","platform","prompt_b64"]
-          missing=[k for k in required if not meta.get(k)]
-          if missing: raise SystemExit("Missing: "+", ".join(missing))
-          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]):
-              raise SystemExit("Invalid project")
-          prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
-          payload={"event_type":"codepilot_generate","client_payload":{
-              "request_id":meta["request_id"],"project":meta["project"],
-              "provider":meta["provider"],"stack":meta["stack"],
-              "platform":meta["platform"],"prompt":prompt}}
-          req=urllib.request.Request(
-              "https://api.github.com/repos/gophisb/codepilot2/dispatches",
-              data=json.dumps(payload).encode(),
-              headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+os.environ["GH_TOKEN"],
-                       "X-GitHub-Api-Version":"2026-03-10","Content-Type":"application/json"},
-              method="POST")
-          with urllib.request.urlopen(req,timeout=30) as r:
-              if r.status not in (200,201,204): raise SystemExit("Dispatch HTTP "+str(r.status))
-          PY
-
-      - name: Comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}"             --body "تم إرسال طلب CodePilot2 إلى GitHub Actions."
+      - run: echo "CodePilot2 bridge is alive"
