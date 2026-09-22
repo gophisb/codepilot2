@@ -88,8 +88,27 @@ jobs:
             text="".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
           else:
             urls={"deepseek":"https://api.deepseek.com/chat/completions","openai":"https://api.openai.com/v1/chat/completions","openrouter":"https://openrouter.ai/api/v1/chat/completions"}
-            models={"deepseek":"deepseek-chat","openai":"gpt-4o","openrouter":"openai/gpt-4o"}
-            data=post(urls[p],{"model":models[p],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
+            models={"deepseek":"deepseek-chat","openai":"gpt-4o"}
+            if p=="openrouter":
+              models_list=[
+                "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
+                "poolside/laguna-s-2.1:free",
+                "inclusionai/ling-3.0-flash:free",
+                "nvidia/nemotron-3.5-lightning:free"
+              ]
+              data=post(urls[p],{
+                "model":models_list[0],
+                "models":models_list,
+                "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+                "temperature":0.2,
+                "max_tokens":12000
+              },{
+                "Authorization":"Bearer "+key,
+                "HTTP-Referer":"https://gophisb.github.io/codepilot2/",
+                "X-Title":"CodePilot2"
+              })
+            else:
+              data=post(urls[p],{"model":models[p],"messages":[{"role":"system","content":system},{"role":"user","content":user}],"temperature":0.2,"max_tokens":12000},{"Authorization":"Bearer "+key})
             text=data["choices"][0]["message"]["content"]
           a,b=text.find("{"),text.rfind("}")
           if a<0 or b<=a:raise SystemExit("Model did not return valid JSON")
