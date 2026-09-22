@@ -83,7 +83,7 @@ jobs:
             except urllib.error.HTTPError as e:raise SystemExit("AI HTTP error: "+e.read().decode("utf-8","replace")[:1000])
           key=keys[p]
           if p=="gemini":
-            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="+urllib.parse.quote(key)
+            url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+urllib.parse.quote(key)
             data=post(url,{"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.2,"maxOutputTokens":12000}}, {})
             text="".join(x.get("text","") for x in data["candidates"][0]["content"]["parts"])
           else:

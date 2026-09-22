@@ -7,7 +7,7 @@
 const PROVIDERS = {
   gemini: {
     base: 'https://generativelanguage.googleapis.com/v1beta/models',
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-2.0-flash',
     envKey: 'GEMINI_API_KEY',
     type: 'gemini'
   },
