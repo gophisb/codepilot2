@@ -1,0 +1,37 @@
+name: Rune Governance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate CodePilot2 JavaScript
+        run: node --check main.js
+      - name: Validate governance files
+        run: |
+          test -s AGENTS.md
+          test -s .rune/contract.md
+          test -s .rune/INVARIANTS.md
+      - name: Rune doctor
+        run: npx --yes @rune-kit/rune@2.32.0 doctor
+      - name: Secret boundary check
+        run: |
+          if grep -RInE 'ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+' --exclude-dir=.git --exclude='*.lock' .; then
+            echo "Potential GitHub token found in repository files."
+            exit 1
+          fi
