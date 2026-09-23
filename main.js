@@ -95,6 +95,32 @@ async function copyText(text){
   const ok=document.execCommand("copy");a.remove();return ok;
  }
 }
+q("generate").onclick=async()=>{
+ const prompt=q("prompt").value.trim(), project=q("project").value.trim();
+ if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
+ if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
+ q("generate").disabled=true;
+ const startedAt=Date.now();
+ const requestId="cp-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
+ try{
+   setStatus("1/5 فتح GitHub لإرسال طلب التنفيذ…","");
+   openGithubRequest({requestId,project,provider:q("provider").value,stack:q("stack").value,platform:q("platform").value,prompt});
+   setStatus("1/5 افتح GitHub واضغط Submit new issue. سيكمل CodePilot2 المتابعة تلقائياً.","ok");
+   const run=await waitForRunPublic(requestId);
+   if(run.conclusion!=="success")throw new Error("فشل Workflow: "+(run.conclusion||run.status)+". افتح سجل Actions للتفاصيل.");
+   setStatus("4/5 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
+   const repo=await waitForRepoPublic(githubOwner,project,startedAt);
+   q("repoUrl").value=repo.html_url;
+   if(/web|pwa/i.test(q("platform").value)){
+     const publicUrl="https://"+githubOwner+".github.io/"+repo.name+"/";
+     q("publicSiteLink").href=publicUrl;q("publicSiteLink").textContent=publicUrl;q("publicSite").style.display="block";
+     setStatus("5/5 تم إنشاء المستودع ✓ يمكنك تحميله الآن.","ok");
+   }else setStatus("5/5 تم إنشاء المستودع بنجاح ✓","ok");
+   await loadRepository();
+ }catch(e){setStatus("فشل التوليد: "+(e.message||e),"err");}
+ finally{q("generate").disabled=false;}
+};
+
 async function loadZipProject(file){
  if(!window.JSZip)throw new Error("مكوّن ZIP لم يتم تحميله بعد؛ أعد فتح الصفحة.");
  if(!file)throw new Error("اختر ملف ZIP أولاً.");
