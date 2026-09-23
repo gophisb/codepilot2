@@ -285,66 +285,39 @@ jobs:
         uses: actions/deploy-pages@v4
 `;
 async function publishZipProject(){
- if(!generatedFiles.length){q("zipRunStatus").textContent="ارفع ZIP أولاً.";q("zipRunStatus").className="status err";return;}
- if(!githubToken){
-   q("zipRunStatus").textContent="نفتح الآن ربط GitHub…";q("zipRunStatus").className="status";
-   try{if(!(await ensureGithubConnection()))throw new Error("لم يكتمل ربط GitHub.");}
-   catch(e){q("zipRunStatus").textContent="فشل ربط GitHub: "+(e.message||e);q("zipRunStatus").className="status err";return;}
+ if(!generatedFiles.length){
+   q("zipRunStatus").textContent="ارفع ZIP أولاً.";
+   q("zipRunStatus").className="status err";
+   return;
  }
- const b=q("publishZip");b.disabled=true;
+ const b=q("publishZip"); b.disabled=true;
  try{
-   q("zipRunStatus").textContent="1/5 إنشاء مستودع جديد…";q("zipRunStatus").className="status";
-   const requested=q("project").value.trim()||"codepilot-zip-project";
-   const repo=await createZipRepo(requested);
-   const full=repo.full_name;
-   const files=generatedFiles.filter(f=>f.path && !/^\.github\//.test(f.path));
-   if(!files.length)throw new Error("لا توجد ملفات قابلة للنشر.");
-   for(let i=0;i<files.length;i++){
-     const file=files[i];
-     q("zipRunStatus").textContent="2/5 رفع الملفات: "+(i+1)+"/"+files.length;
-     await authedJson(apiBase+"/repos/"+full+"/contents/"+file.path.split("/").map(encodeURIComponent).join("/"),{
-       method:"PUT",headers:{"Content-Type":"application/json"},
-       body:JSON.stringify({message:"CodePilot ZIP: "+file.path,content:btoa(unescape(encodeURIComponent(file.content))),branch:"main"})
-     });
+   const requested=(q("project").value.trim()||"codepilot-zip-project")
+     .replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^[^A-Za-z0-9]+/,"").slice(0,90)||"codepilot-zip-project";
+   const requestId="cpzip-"+Date.now().toString(36);
+   const workflow=zipPagesWorkflow(requested);
+   const files=generatedFiles.filter(f=>f.path && !/^\.github\//.test(f.path))
+     .map(f=>({path:normalizePath(f.path),content:f.content}));
+   files.push({path:".github/workflows/deploy-pages.yml",content:workflow});
+   const payload={target_owner:githubOwner,target_repo:requested,create_repo:true,files};
+   const encoded=b64utf8(JSON.stringify(payload));
+   if(encoded.length>60000){
+     throw new Error("المشروع كبير للرفع الآمن عبر GitHub Issue (الحد الحالي 60KB). للمشاريع الكبيرة استخدم التوليد عبر Actions أو نزّل ZIP.");
    }
-   q("zipRunStatus").textContent="3/5 إضافة محرك البناء والنشر…";
-   const wf=zipPagesWorkflow(repo.name);
-   await authedJson(apiBase+"/repos/"+full+"/contents/.github/workflows/deploy-pages.yml",{
-     method:"PUT",headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({message:"Add GitHub Pages build workflow",content:btoa(unescape(encodeURIComponent(wf))),branch:"main"})
-   });
-   q("zipRunStatus").textContent="4/5 تفعيل GitHub Pages…";
-   const pagesUrl=apiBase+"/repos/"+full+"/pages";
-   const pr=await fetch(pagesUrl,{method:"POST",headers:{...githubHeaders(),"Content-Type":"application/json"},body:JSON.stringify({build_type:"workflow",source:{branch:"main",path:"/"}})});
-   if(!pr.ok && pr.status!==409){
-     const pd=await pr.json().catch(()=>({}));
-     throw new Error("فشل تفعيل Pages: "+(pd.message||("HTTP "+pr.status)));
-   }
-   q("repoUrl").value=repo.html_url;
-   const publicUrl="https://"+repo.owner.login+".github.io/"+repo.name+"/";
-   q("publicSiteLink").href=publicUrl;q("publicSiteLink").textContent=publicUrl;q("publicSite").style.display="block";
-   q("zipRunStatus").textContent="5/5 تم الرفع. ننتظر Build وPages…";
-   const deadline=Date.now()+8*60*1000;
-   let done=false;
-   while(Date.now()<deadline){
-     const runs=await authedJson(apiBase+"/repos/"+full+"/actions/workflows/deploy-pages.yml/runs?per_page=5");
-     const run=(runs.workflow_runs||[])[0];
-     if(run){
-       if(run.status==="completed"){
-         done=run.conclusion==="success";
-         if(!done)throw new Error("فشل Build/Pages. افتح Actions في "+repo.html_url);
-         break;
-       }
-       q("zipRunStatus").textContent="Build يعمل الآن: "+run.status+"…";
-     }
-     await new Promise(r=>setTimeout(r,5000));
-   }
-   if(!done)throw new Error("انتهت مهلة Build. المستودع موجود ويمكن متابعة Actions من الرابط.");
-   q("zipRunStatus").textContent="نجح التشغيل الفعلي ✓ تم بناء المشروع ونشره على GitHub Pages.";
+   const title="CodePilot2 Publish: "+requested+" ["+requestId+"]";
+   const body=["<!-- CodePilot2 publish","payload_b64="+encoded,"-->","","CodePilot2 ZIP publish request."].join("\n");
+   const url="https://github.com/gophisb/codepilot2/issues/new?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(body);
+   q("zipRunStatus").textContent="1/3 فتح GitHub لإرسال ZIP إلى جسر النشر…";
+   q("zipRunStatus").className="status";
+   const w=window.open(url,"_blank","noopener"); if(!w)window.location.href=url;
+   q("zipRunStatus").textContent="1/3 تم فتح GitHub. اضغط Submit new issue ليبدأ إنشاء المستودع ورفع الملفات.";
    q("zipRunStatus").className="status ok";
-   await loadRepository();
+   q("repoUrl").value="https://github.com/gophisb/"+requested;
+   q("publicSiteLink").href="https://gophisb.github.io/"+requested+"/";
+   q("publicSiteLink").textContent="https://gophisb.github.io/"+requested+"/";
+   q("publicSite").style.display="block";
  }catch(e){
-   q("zipRunStatus").textContent="فشل التشغيل الفعلي: "+(e.message||e);
+   q("zipRunStatus").textContent="فشل تجهيز ZIP: "+(e.message||e);
    q("zipRunStatus").className="status err";
  }finally{b.disabled=false;}
 }
