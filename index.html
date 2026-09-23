@@ -53,7 +53,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 
 <div class="card">
 <h2>2 — قراءة index.html مباشرة</h2>
-<p class="note">ارفع ملف <code>index.html</code> وحده لرؤية الكود، نسخه، ومعاينته فوراً. هذه الميزة مستقلة عن ملفات المشروع الحالية ولا تغيّرها.</p>
+<p class="note">ارفع ملف <code>index.html</code> لرؤية الكود ونسخه، ثم تظهر معاينته أيضاً داخل قسم «المعاينة المؤقتة» بالمسار <code>index.html</code>. لا تغيّر هذه العملية ملفات المشروع الحالية.</p>
 <input id="indexInput" type="file" accept=".html,.htm,text/html">
 <div class="status" id="indexStatus">لم يتم اختيار index.html بعد.</div>
 <div id="indexReader" style="display:none">
@@ -142,7 +142,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
     }
   }catch(_){}
   const s=document.createElement("script");
-  s.src="./main.js?v=20260923-stable-v6";
+  s.src="./main.js?v=20260923-stable-v7";
   s.onload=function(){document.documentElement.dataset.codepilotBoot="ok";};
   s.onerror=function(){
     const el=document.getElementById("status");
