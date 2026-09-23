@@ -357,6 +357,10 @@ q("zipInput").onchange=async()=>{
  catch(e){s.textContent="فشل فتح ZIP: "+(e.message||e);s.className="status err";}
 };
 
+function updateFileFromEditor(){
+ const f=generatedFiles[currentFileIndex];
+ if(f) f.content=q("codeView").value;
+}
 function showFile(index){
  currentFileIndex=Number(index)||0;const f=generatedFiles[currentFileIndex];if(!f)return;
  q("codeView").value=f.content;q("fileInfo").textContent=f.path+" — "+f.content.length+" حرف";
@@ -468,6 +472,44 @@ function buildPreview(){
  frame.srcdoc=html;
 }
 
+
+async function downloadProjectZip(){
+  if(!window.JSZip || !generatedFiles.length){ alert("لا يوجد مشروع جاهز."); return; }
+  const zip=new JSZip();
+  generatedFiles.forEach(f=>zip.file(normalizePath(f.path),f.content));
+  const blob=await zip.generateAsync({type:"blob"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=(safeRepoUrl(q("repoUrl").value)?.repo||"codepilot-project")+".zip";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+function buildPublishIssueBody(){
+  const parsed=safeRepoUrl(q("repoUrl").value);
+  if(!parsed) throw new Error("ضع رابط مستودع GitHub الهدف أولاً.");
+  if(!generatedFiles.length) throw new Error("لا توجد ملفات لرفعها.");
+  const payload={target_owner:parsed.owner,target_repo:parsed.repo,files:generatedFiles.map(f=>({path:normalizePath(f.path),content:f.content}))};
+  const encoded=b64utf8(JSON.stringify(payload));
+  if(encoded.length>90000) throw new Error("المشروع كبير جدًا للرفع المباشر عبر GitHub Issue. استخدم ZIP/Actions للمشاريع الكبيرة.");
+  return ["<!-- CodePilot2 publish","payload_b64="+encoded,"-->","","CodePilot2 publish request."].join("\n");
+}
+
+function publishCodeToGitHub(){
+  const parsed=safeRepoUrl(q("repoUrl").value);
+  if(!parsed){ q("loadStatus").textContent="ضع رابط مستودع GitHub الهدف أولاً.";q("loadStatus").className="status err";return; }
+  updateFileFromEditor();
+  try{
+    const requestId="cpp-"+Date.now().toString(36);
+    const title="CodePilot2 Publish: "+parsed.repo+" ["+requestId+"]";
+    const body=buildPublishIssueBody();
+    const url="https://github.com/gophisb/codepilot2/issues/new?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(body);
+    const w=window.open(url,"_blank","noopener"); if(!w)window.location.href=url;
+    q("loadStatus").textContent="تم تجهيز طلب الرفع إلى GitHub. اضغط Submit new issue، وسيقوم Actions بإنشاء/تحديث الملفات في المستودع الهدف.";
+    q("loadStatus").className="status ok";
+  }catch(e){q("loadStatus").textContent="فشل تجهيز الرفع: "+(e.message||e);q("loadStatus").className="status err";}
+}
+
 function safeRepoUrl(value){
  try{
   // Accept a pasted GitHub link even when the user copied surrounding text,
@@ -552,3 +594,6 @@ renderGithubState();
 q("prompt").addEventListener("touchstart",()=>q("prompt").focus(),{passive:true});
 q("codeView").addEventListener("touchstart",()=>q("codeView").focus(),{passive:true});
 
+
+q("publishCode").onclick=publishCodeToGitHub;
+q("downloadProject").onclick=downloadProjectZip;
