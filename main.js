@@ -567,5 +567,43 @@ q("prompt").addEventListener("touchstart",()=>q("prompt").focus(),{passive:true}
 q("codeView").addEventListener("touchstart",()=>q("codeView").focus(),{passive:true});
 
 
+function renderStandaloneIndexPreview(){
+  const frame=q("indexPreview");
+  const code=q("indexCode");
+  if(!frame||!code)return;
+  let html=String(code.value||"");
+  html=html.replace(/<base\b[^>]*>/gi,"");
+  const diagnostics="<script>(function(){function show(msg){try{var b=document.getElementById('__cp_index_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_index_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='index.html Preview Error\\n'+msg;}catch(_){}}window.addEventListener('error',function(e){show((e.message||'Runtime error')+(e.lineno?'\\nline '+e.lineno:''));});window.addEventListener('unhandledrejection',function(e){show('Unhandled promise rejection\\n'+(e.reason&&e.reason.stack||e.reason||'Unknown error'));});})();<\\/script>";
+  if(/<body\b/i.test(html))html=html.replace(/<body\b([^>]*)>/i,"<body$1>"+diagnostics);
+  else html=diagnostics+html;
+  frame.srcdoc=html;
+}
+function loadStandaloneIndex(file){
+  if(!file)return;
+  const name=String(file.name||"").toLowerCase();
+  if(!/\.html?$/.test(name)){q("indexStatus").textContent="اختر ملف HTML فقط.";q("indexStatus").className="status err";return;}
+  if(file.size>5*1024*1024){q("indexStatus").textContent="index.html أكبر من 5MB؛ اختر نسخة أصغر للقراءة الآمنة.";q("indexStatus").className="status err";return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    q("indexCode").value=String(reader.result||"");
+    q("indexReader").style.display="block";
+    q("indexStatus").textContent="تمت قراءة "+file.name+" ✓ — الكود مستقل عن المشروع الحالي.";
+    q("indexStatus").className="status ok";
+    renderStandaloneIndexPreview();
+  };
+  reader.onerror=()=>{q("indexStatus").textContent="تعذر قراءة الملف.";q("indexStatus").className="status err";};
+  reader.readAsText(file,"UTF-8");
+}
+if(q("indexInput")){
+  q("indexInput").onchange=()=>loadStandaloneIndex(q("indexInput").files[0]);
+  q("indexCode").addEventListener("input",renderStandaloneIndexPreview);
+  q("copyIndexCode").onclick=async()=>{
+    const ok=await copyText(q("indexCode").value);
+    q("copyIndexCode").textContent=ok?"تم نسخ index.html ✓":"فشل النسخ";
+    setTimeout(()=>q("copyIndexCode").textContent="نسخ index.html",1500);
+  };
+  q("refreshIndexPreview").onclick=renderStandaloneIndexPreview;
+}
+
 q("publishCode").onclick=publishCodeToGitHub;
 q("downloadProject").onclick=downloadProjectZip;
