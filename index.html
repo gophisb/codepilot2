@@ -52,6 +52,22 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 </div>
 
 <div class="card">
+<h2>2 — قراءة index.html مباشرة</h2>
+<p class="note">ارفع ملف <code>index.html</code> وحده لرؤية الكود، نسخه، ومعاينته فوراً. هذه الميزة مستقلة عن ملفات المشروع الحالية ولا تغيّرها.</p>
+<input id="indexInput" type="file" accept=".html,.htm,text/html">
+<div class="status" id="indexStatus">لم يتم اختيار index.html بعد.</div>
+<div id="indexReader" style="display:none">
+<label for="indexCode">محتوى index.html</label>
+<textarea id="indexCode" class="codebox" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"></textarea>
+<div class="actions">
+<button class="secondary" id="copyIndexCode">نسخ index.html</button>
+<button class="secondary" id="refreshIndexPreview">تحديث المعاينة</button>
+</div>
+<iframe id="indexPreview" class="preview-frame" sandbox="allow-scripts" style="margin-top:10px"></iframe>
+</div>
+</div>
+
+<div class="card">
 <h2>2 — فتح مشروع ZIP</h2>
 <p class="note">ارفع مشروعاً مضغوطاً بصيغة ZIP. سيتم فكّه داخل CodePilot2 مباشرة. سيظهر الكود والمعاينة فوراً؛ أما تثبيت dependencies وتشغيل Node/React ونحوها فيحتاج إلى تشغيل Build عبر GitHub Actions.</p>
 <input id="zipInput" type="file" accept=".zip,application/zip">
@@ -126,7 +142,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
     }
   }catch(_){}
   const s=document.createElement("script");
-  s.src="./main.js?v=20260923-stable-v5";
+  s.src="./main.js?v=20260923-stable-v6";
   s.onload=function(){document.documentElement.dataset.codepilotBoot="ok";};
   s.onerror=function(){
     const el=document.getElementById("status");
