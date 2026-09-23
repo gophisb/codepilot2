@@ -514,15 +514,11 @@ function safeRepoUrl(value){
  try{
   let raw=String(value||"").trim();
   if(!raw)return null;
+  raw=raw.replace(/[\u200B-\u200D\uFEFF]/g,"").trim();
 
-  // Accept the common forms users actually paste:
-  // github.com/OWNER/REPO
-  // https://github.com/OWNER/REPO[/tree/BRANCH or /blob/...]
-  // OWNER.github.io/REPO
-  raw=raw.replace(/[\\u200B-\\u200D\\uFEFF]/g,"").trim();
-  const match=raw.match(/(?:https?:\\/\\/)?(?:www\\.)?(?:github\\.com|[A-Za-z0-9-]+\\.github\\.io)\\/[^\\s<>"]+/i);
+  const match=raw.match(/(?:https?:\/\/)?(?:www\.)?(?:github\.com|[A-Za-z0-9-]+\.github\.io)\/[^\s<>"]+/i);
   if(match)raw=match[0];
-  if(!/^https?:\\/\\//i.test(raw))raw="https://"+raw;
+  if(!/^https?:\/\//i.test(raw))raw="https://"+raw;
   raw=raw.replace(/[),.;!?]+$/,"");
 
   const u=new URL(raw);
@@ -532,20 +528,19 @@ function safeRepoUrl(value){
     const parts=u.pathname.split("/").filter(Boolean);
     if(parts.length<2)return null;
     const owner=decodeURIComponent(parts[0]).trim();
-    const repo=decodeURIComponent(parts[1]).replace(/\\.git$/i,"").trim();
+    const repo=decodeURIComponent(parts[1]).replace(/\.git$/i,"").trim();
     if(!/^[A-Za-z0-9-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo))return null;
     return {owner,repo};
   }
 
-  const m=host.match(/^([a-z0-9-]+)\\.github\\.io$/i);
+  const m=host.match(/^([a-z0-9-]+)\.github\.io$/i);
   if(m){
     const parts=u.pathname.split("/").filter(Boolean);
     if(!parts.length)return null;
-    const repo=decodeURIComponent(parts[0]).replace(/\\.git$/i,"").trim();
+    const repo=decodeURIComponent(parts[0]).replace(/\.git$/i,"").trim();
     if(!/^[A-Za-z0-9._-]+$/.test(repo))return null;
     return {owner:m[1],repo};
   }
-
   return null;
  }catch{return null;}
 }
