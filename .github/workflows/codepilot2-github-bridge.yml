@@ -49,3 +49,35 @@ jobs:
           with urllib.request.urlopen(req,timeout=30) as r:
               if r.status not in (200,201,204): raise SystemExit("Dispatch HTTP "+str(r.status))
           PY
+
+  publish:
+    if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, 'CodePilot2 Publish:')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+    steps:
+      - name: Publish edited project files
+        run: |
+          python3 - <<'PY'
+          import os,re,base64,json,subprocess
+          body=os.environ["ISSUE_BODY"]
+          m=re.search(r"<!-- CodePilot2 publish\npayload_b64=(.*?)\n-->",body,re.S)
+          if not m: raise SystemExit("Invalid publish request")
+          data=json.loads(base64.b64decode(m.group(1),validate=True).decode("utf-8"))
+          owner=data["target_owner"]; repo=data["target_repo"]
+          if not re.fullmatch(r"[A-Za-z0-9-]+",owner): raise SystemExit("Invalid owner")
+          if not re.fullmatch(r"[A-Za-z0-9._-]+",repo): raise SystemExit("Invalid repo")
+          files=data["files"]
+          if not files: raise SystemExit("No files")
+          for f in files:
+              path=f["path"].replace("\\","/").lstrip("/")
+              if not path or ".." in path.split("/"): raise SystemExit("Unsafe path: "+path)
+              try:
+                  old=json.loads(subprocess.check_output(["gh","api",f"repos/{owner}/{repo}/contents/{path}"],text=True))
+                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: update {path}","-f",f"content={base64.b64encode(f['content'].encode()).decode()}","-f",f"sha={old['sha']}"]
+              except subprocess.CalledProcessError:
+                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: create {path}","-f",f"content={base64.b64encode(f['content'].encode()).decode()}"]
+              subprocess.check_call(args)
+          print("Published",len(files),"files to",f"{owner}/{repo}")
+          PY
