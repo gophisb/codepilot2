@@ -512,32 +512,36 @@ function publishCodeToGitHub(){
 
 function safeRepoUrl(value){
  try{
-  // Accept a pasted GitHub link even when the user copied surrounding text,
-  // omitted https://, used www.github.com, or included a trailing punctuation mark.
   let raw=String(value||"").trim();
-  const match=raw.match(/https?:\/\/[^\s<>"']+|(?:www\.)?github\.com\/[^\s<>"']+|[a-z0-9-]+\.github\.io\/[^\s<>"']+/i);
+  if(!raw)return null;
+
+  // Accept the common forms users actually paste:
+  // github.com/OWNER/REPO
+  // https://github.com/OWNER/REPO[/tree/BRANCH or /blob/...]
+  // OWNER.github.io/REPO
+  raw=raw.replace(/[\\u200B-\\u200D\\uFEFF]/g,"").trim();
+  const match=raw.match(/(?:https?:\\/\\/)?(?:www\\.)?(?:github\\.com|[A-Za-z0-9-]+\\.github\\.io)\\/[^\\s<>"]+/i);
   if(match)raw=match[0];
-  if(!/^https?:\/\//i.test(raw))raw="https://"+raw;
+  if(!/^https?:\\/\\//i.test(raw))raw="https://"+raw;
   raw=raw.replace(/[),.;!?]+$/,"");
+
   const u=new URL(raw);
   const host=u.hostname.toLowerCase();
 
   if(host==="github.com" || host==="www.github.com"){
     const parts=u.pathname.split("/").filter(Boolean);
     if(parts.length<2)return null;
-    const owner=parts[0].trim();
-    const repo=parts[1].replace(/\.git$/,"").trim();
+    const owner=decodeURIComponent(parts[0]).trim();
+    const repo=decodeURIComponent(parts[1]).replace(/\\.git$/i,"").trim();
     if(!/^[A-Za-z0-9-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo))return null;
     return {owner,repo};
   }
 
-  // Also accept a public GitHub Pages URL:
-  // https://OWNER.github.io/REPO
-  const m=host.match(/^([a-z0-9-]+)\.github\.io$/i);
+  const m=host.match(/^([a-z0-9-]+)\\.github\\.io$/i);
   if(m){
     const parts=u.pathname.split("/").filter(Boolean);
-    if(parts.length<1)return null;
-    const repo=parts[0].replace(/\.git$/,"").trim();
+    if(!parts.length)return null;
+    const repo=decodeURIComponent(parts[0]).replace(/\\.git$/i,"").trim();
     if(!/^[A-Za-z0-9._-]+$/.test(repo))return null;
     return {owner:m[1],repo};
   }
