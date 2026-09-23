@@ -21,6 +21,43 @@ while gh repo view "$owner/$candidate" >/dev/null 2>&1; do
 done
 
 
+if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
+  cat > generated-project/.github-pages.yml <<'EOF'
+name: CodePilot2 Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+EOF
+  mkdir -p generated-project/.github/workflows
+  mv generated-project/.github-pages.yml generated-project/.github/workflows/deploy-pages.yml
+fi
+
 cd generated-project
 git init
 touch .nojekyll
@@ -35,7 +72,6 @@ printf "https://github.com/%s/%s
 " "$owner" "$candidate" > target-repo.txt
 
 if [[ "$PLATFORM" =~ (Web|PWA) ]]; then
-  gh api --method POST "repos/$owner/$candidate/pages"     -f build_type=legacy -f "source[branch]=main" -f "source[path]=/"     >/dev/null 2>&1 || true
   printf "https://%s.github.io/%s/
 " "$owner" "$candidate" > pages-url.txt
 fi
