@@ -30,8 +30,7 @@ jobs:
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}",meta["project"]):
               raise SystemExit("Invalid project")
           prompt=base64.b64decode(meta["prompt_b64"],validate=True).decode("utf-8")
-          payload={"event_type":"codepilot_generate","client_payload":{
-              "issue_number":int(os.environ["ISSUE_NUMBER"]),
+          payload={"ref":"main","inputs":{
               "request_id":meta["request_id"],
               "project":meta["project"],
               "provider":meta["provider"],
@@ -39,7 +38,7 @@ jobs:
               "platform":meta["platform"],
               "prompt":prompt}}
           req=urllib.request.Request(
-              "https://api.github.com/repos/gophisb/codepilot2/dispatches",
+              "https://api.github.com/repos/gophisb/codepilot2/actions/workflows/codepilot-run.yml/dispatches",
               data=json.dumps(payload).encode(),
               headers={"Accept":"application/vnd.github+json",
                        "Authorization":"Bearer "+os.environ["GH_TOKEN"],
