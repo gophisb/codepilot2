@@ -4,6 +4,7 @@ const githubOwner="gophisb";
 const bridgeUrl="https://github.com/gophisb/codepilot2/issues/new";
 const workflowPath="codepilot-run.yml";
 let generatedFiles=[], currentFileIndex=0;
+let standaloneIndexPreview="";
 let pollTimer=null;
 let githubToken="";
 let githubLoginName=githubOwner;
@@ -356,13 +357,16 @@ function previewDataUrl(text,mime){
 }
 function buildPreview(){
  const frame=q("preview");
- const htmlFile=generatedFiles.find(f=>normalizePath(f.path)==="index.html"||normalizePath(f.path).endsWith("/index.html"));
+ const htmlFile=standaloneIndexPreview
+   ? {path:"index.html",content:standaloneIndexPreview}
+   : generatedFiles.find(f=>normalizePath(f.path)==="index.html"||normalizePath(f.path).endsWith("/index.html"));
  if(!htmlFile){
    frame.srcdoc="<body style='font-family:system-ui;padding:20px'><h3>لا توجد index.html</h3><p>المعاينة الحالية مخصصة لمشاريع الويب.</p></body>";
    return;
  }
 
  const map=new Map(generatedFiles.map(f=>[normalizePath(f.path),f]));
+ if(standaloneIndexPreview)map.set("index.html",{path:"index.html",content:standaloneIndexPreview});
  let html=htmlFile.content;
  html=html.replace(/<base\b[^>]*>/gi,"");
 
@@ -586,17 +590,30 @@ function loadStandaloneIndex(file){
   const reader=new FileReader();
   reader.onload=()=>{
     q("indexCode").value=String(reader.result||"");
+    standaloneIndexPreview=q("indexCode").value;
     q("indexReader").style.display="block";
     q("indexStatus").textContent="تمت قراءة "+file.name+" ✓ — الكود مستقل عن المشروع الحالي.";
     q("indexStatus").className="status ok";
     renderStandaloneIndexPreview();
+    q("summary").textContent="تم تحميل index.html محلياً — المسار المعروض في المعاينة: index.html";
+    q("output").style.display="block";
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+    q("previewPanel").classList.add("active");
+    document.querySelector(".tab[data-tab=\"preview\"]").classList.add("active");
+    buildPreview();
+    q("output").scrollIntoView({behavior:"smooth",block:"start"});
   };
   reader.onerror=()=>{q("indexStatus").textContent="تعذر قراءة الملف.";q("indexStatus").className="status err";};
   reader.readAsText(file,"UTF-8");
 }
 if(q("indexInput")){
   q("indexInput").onchange=()=>loadStandaloneIndex(q("indexInput").files[0]);
-  q("indexCode").addEventListener("input",renderStandaloneIndexPreview);
+  q("indexCode").addEventListener("input",()=>{
+    standaloneIndexPreview=q("indexCode").value;
+    renderStandaloneIndexPreview();
+    buildPreview();
+  });
   q("copyIndexCode").onclick=async()=>{
     const ok=await copyText(q("indexCode").value);
     q("copyIndexCode").textContent=ok?"تم نسخ index.html ✓":"فشل النسخ";
