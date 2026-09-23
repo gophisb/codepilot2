@@ -28,6 +28,8 @@ jobs:
           test -s AGENTS.md
           test -s .rune/contract.md
           test -s .rune/INVARIANTS.md
+      - name: Compile Rune generic governance
+        run: npx --yes @rune-kit/rune@2.32.0 init --platform generic --force
       - name: Rune doctor
         run: npx --yes @rune-kit/rune@2.32.0 doctor
       - name: Secret boundary check
