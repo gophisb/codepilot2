@@ -48,6 +48,25 @@ async function waitForRunPublic(requestId){
   }
   throw new Error("انتهت مهلة انتظار GitHub Actions.");
 }
+async function waitForPagesPublic(owner,project,sinceMs){
+  const deadline=Date.now()+10*60*1000;
+  while(Date.now()<deadline){
+    const r=await fetch(apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project)+"/actions/workflows/deploy-pages.yml/runs?per_page=10&event=push",{cache:"no-store"});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(data.message||("GitHub Pages Actions HTTP "+r.status));
+    const runs=(data.workflow_runs||[]).filter(x=>new Date(x.created_at||0).getTime()>=sinceMs-120000);
+    const run=runs[0];
+    if(run){
+      if(run.status==="completed"){
+        if(run.conclusion==="success")return run;
+        throw new Error("فشل نشر GitHub Pages: "+(run.conclusion||"completed")+". افتح سجل deploy-pages.yml للتفاصيل.");
+      }
+      setStatus("5/6 يتم نشر الموقع على GitHub Pages: "+(run.status||"queued")+"…","ok");
+    }else setStatus("5/6 تم إنشاء المستودع؛ ننتظر بدء نشر GitHub Pages…","ok");
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  throw new Error("انتهت مهلة انتظار نشر GitHub Pages.");
+}
 async function waitForRepoPublic(owner,project,sinceMs){
   const deadline=Date.now()+5*60*1000;
   while(Date.now()<deadline){
@@ -112,9 +131,11 @@ q("generate").onclick=async()=>{
    const repo=await waitForRepoPublic(githubOwner,project,startedAt);
    q("repoUrl").value=repo.html_url;
    if(/web|pwa/i.test(q("platform").value)){
+     setStatus("5/6 المستودع جاهز؛ نتحقق من نشر GitHub Pages…","ok");
+     await waitForPagesPublic(githubOwner,repo.name,startedAt);
      const publicUrl="https://"+githubOwner+".github.io/"+repo.name+"/";
      q("publicSiteLink").href=publicUrl;q("publicSiteLink").textContent=publicUrl;q("publicSite").style.display="block";
-     setStatus("5/5 تم إنشاء المستودع ✓ يمكنك تحميله الآن.","ok");
+     setStatus("6/6 تم إنشاء المشروع ونشره على GitHub Pages ✓","ok");
    }else setStatus("5/5 تم إنشاء المستودع بنجاح ✓","ok");
    await loadRepository();
  }catch(e){setStatus("فشل التوليد: "+(e.message||e),"err");}
