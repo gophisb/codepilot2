@@ -5,9 +5,6 @@ const bridgeUrl="https://github.com/gophisb/codepilot2/issues/new";
 const workflowPath="codepilot-run.yml";
 let generatedFiles=[], currentFileIndex=0;
 let standaloneIndexPreview="";
-let pollTimer=null;
-let githubToken="";
-let githubLoginName=githubOwner;
 
 function setGithubStatus(message,kind){q("githubStatus").textContent=message;q("githubStatus").className="status "+(kind||"");}
 function renderGithubState(){
@@ -66,8 +63,6 @@ async function waitForRepoPublic(owner,project,sinceMs){
   }
   throw new Error("تم تشغيل Actions لكن المستودع الناتج لم يظهر بعد.");
 }
-async function ensureGithubConnection(){return true;}
-
 q("githubLogin").onclick=()=>{
   const prompt=q("prompt").value.trim();
   const project=q("project").value.trim()||"my-codepilot-app";
@@ -100,86 +95,6 @@ async function copyText(text){
   const ok=document.execCommand("copy");a.remove();return ok;
  }
 }
-async function waitForRun(requestId,project){
- const deadline=Date.now()+20*60*1000;
- while(Date.now()<deadline){
-   const data=await authedJson(apiBase+"/repos/gophisb/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=20");
-   const run=(data.workflow_runs||[]).find(x=>
-     String(x.name||"").includes(requestId) ||
-     String(x.display_title||"").includes(requestId)
-   );
-   if(run){
-     if(run.status==="completed")return run;
-     setStatus("Actions يعمل الآن: "+(run.status||"queued")+"…","ok");
-   }else{
-     setStatus("تم إرسال الطلب؛ ننتظر ظهور تشغيل Actions…","ok");
-   }
-   await new Promise(r=>setTimeout(r,5000));
- }
- throw new Error("انتهت مهلة انتظار GitHub Actions.");
-}
-async function waitForRepo(owner,project,sinceMs){
- const deadline=Date.now()+5*60*1000;
- while(Date.now()<deadline){
-   try{
-     const exact=await authedJson(apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project));
-     if(new Date(exact.created_at).getTime()>=sinceMs-60000)return exact;
-   }catch(e){
-     if(!String(e.message).includes("Not Found"))throw e;
-   }
-   const repos=await authedJson(apiBase+"/user/repos?per_page=100&sort=created&direction=desc");
-   const candidate=(repos||[]).find(x=>{
-     if(x.owner?.login!==owner || new Date(x.created_at).getTime()<sinceMs-60000)return false;
-     if(x.name===project)return true;
-     if(!x.name.startsWith(project+"-"))return false;
-     return /^-\d+$/.test(x.name.slice(project.length));
-   });
-   if(candidate)return candidate;
-   await new Promise(r=>setTimeout(r,5000));
- }
- throw new Error("انتهت مهلة انتظار المستودع الناتج.");
-}
-async function waitForPages(owner,project){
- const deadline=Date.now()+5*60*1000;
- const url=apiBase+"/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(project)+"/pages";
- while(Date.now()<deadline){
-   try{
-     const pages=await authedJson(url);
-     if(pages&&pages.html_url)return pages.html_url;
-     if(pages&&pages.status==="built")return "https://"+owner+".github.io/"+project+"/";
-   }catch(e){
-     if(!String(e.message).includes("HTTP 404"))throw e;
-   }
-   await new Promise(r=>setTimeout(r,5000));
- }
- throw new Error("تم إنشاء المستودع لكن GitHub Pages لم يصبح جاهزاً بعد.");
-}
-q("generate").onclick=async()=>{
- const prompt=q("prompt").value.trim(), project=q("project").value.trim();
- if(!prompt){setStatus("اكتب وصف التطبيق أولاً.","err");return;}
- if(!validProject(project)){setStatus("اسم المشروع غير صالح لـ GitHub.","err");return;}
- q("generate").disabled=true;
- const startedAt=Date.now();
- const requestId="cp-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7);
- try{
-   setStatus("1/5 فتح GitHub لإرسال طلب التنفيذ…","");
-   openGithubRequest({requestId,project,provider:q("provider").value,stack:q("stack").value,platform:q("platform").value,prompt});
-   setStatus("1/5 افتح GitHub واضغط Submit new issue. سيكمل CodePilot2 المتابعة تلقائياً.","ok");
-   const run=await waitForRunPublic(requestId);
-   if(run.conclusion!=="success")throw new Error("فشل Workflow: "+(run.conclusion||run.status)+". افتح سجل Actions للتفاصيل.");
-   setStatus("4/5 اكتمل التوليد. نبحث عن المستودع الناتج…","ok");
-   const repo=await waitForRepoPublic(githubOwner,project,startedAt);
-   q("repoUrl").value=repo.html_url;
-   if(/web|pwa/i.test(q("platform").value)){
-     const publicUrl="https://"+githubOwner+".github.io/"+repo.name+"/";
-     q("publicSiteLink").href=publicUrl;q("publicSiteLink").textContent=publicUrl;q("publicSite").style.display="block";
-     setStatus("5/5 تم إنشاء المستودع ✓ يمكنك تحميله الآن.","ok");
-   }else setStatus("5/5 تم إنشاء المستودع بنجاح ✓","ok");
-   await loadRepository();
- }catch(e){setStatus("فشل التوليد: "+(e.message||e),"err");}
- finally{q("generate").disabled=false;}
-};
-
 async function loadZipProject(file){
  if(!window.JSZip)throw new Error("مكوّن ZIP لم يتم تحميله بعد؛ أعد فتح الصفحة.");
  if(!file)throw new Error("اختر ملف ZIP أولاً.");
@@ -209,22 +124,6 @@ async function loadZipProject(file){
  const packageFile=generatedFiles.find(f=>normalizePath(f.path)==="package.json"||normalizePath(f.path).endsWith("/package.json"));
  q("loadStatus").textContent=packageFile ? "تم فتح ZIP ✓ — تم اكتشاف package.json؛ التثبيت والتشغيل الفعلي يحتاجان Build عبر GitHub Actions." : "تم فتح ZIP ✓ — المعاينة المحلية جاهزة.";q("loadStatus").className="status ok";
  q("output").scrollIntoView({behavior:"smooth",block:"start"});
-}
-async function createZipRepo(baseName){
- if(!githubToken)throw new Error("اربط GitHub أولاً.");
- let base=(baseName||"codepilot-zip-project").trim().replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^[^A-Za-z0-9]+/,"").slice(0,90)||"codepilot-zip-project";
- let candidate=base, n=2;
- while(true){
-   const r=await fetch(apiBase+"/repos/"+encodeURIComponent(githubLoginName)+"/"+encodeURIComponent(candidate),{headers:githubHeaders()});
-   if(r.status===404)break;
-   if(!r.ok)throw new Error("تعذر فحص اسم المستودع: HTTP "+r.status);
-   const suffix="-"+n++;
-   candidate=base.slice(0,100-suffix.length)+suffix;
- }
- return await authedJson(apiBase+"/user/repos",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-   name:candidate,description:"Project uploaded and deployed by CodePilot2-gophisb",private:false,
-   has_issues:true,has_projects:false,has_wiki:false
- })});
 }
 const zipPagesWorkflow=(repoName)=>`name: Build and deploy ZIP project
 on:
