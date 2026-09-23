@@ -66,18 +66,25 @@ jobs:
           if not m: raise SystemExit("Invalid publish request")
           data=json.loads(base64.b64decode(m.group(1),validate=True).decode("utf-8"))
           owner=data["target_owner"]; repo=data["target_repo"]
+          if owner != "gophisb": raise SystemExit("Only the configured owner is allowed")
           if not re.fullmatch(r"[A-Za-z0-9-]+",owner): raise SystemExit("Invalid owner")
-          if not re.fullmatch(r"[A-Za-z0-9._-]+",repo): raise SystemExit("Invalid repo")
+          if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}",repo): raise SystemExit("Invalid repo")
           files=data["files"]
           if not files: raise SystemExit("No files")
+          if len(files) > 200: raise SystemExit("Too many files")
+          if data.get("create_repo"):
+              subprocess.check_call(["gh","repo","create",f"{owner}/{repo}","--public","--description","Project uploaded by CodePilot2"])
           for f in files:
               path=f["path"].replace("\\","/").lstrip("/")
-              if not path or ".." in path.split("/"): raise SystemExit("Unsafe path: "+path)
+              parts=path.split("/")
+              if not path or any(p in ("","..") for p in parts): raise SystemExit("Unsafe path: "+path)
+              if path.startswith(".git/") or path == ".git": raise SystemExit("Unsafe path: "+path)
+              encoded=base64.b64encode(f["content"].encode()).decode()
               try:
                   old=json.loads(subprocess.check_output(["gh","api",f"repos/{owner}/{repo}/contents/{path}"],text=True))
-                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: update {path}","-f",f"content={base64.b64encode(f['content'].encode()).decode()}","-f",f"sha={old['sha']}"]
+                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: update {path}","-f",f"content={encoded}","-f",f"sha={old['sha']}"]
               except subprocess.CalledProcessError:
-                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: create {path}","-f",f"content={base64.b64encode(f['content'].encode()).decode()}"]
+                  args=["gh","api","--method","PUT",f"repos/{owner}/{repo}/contents/{path}","-f",f"message=CodePilot2: create {path}","-f",f"content={encoded}"]
               subprocess.check_call(args)
           print("Published",len(files),"files to",f"{owner}/{repo}")
           PY
