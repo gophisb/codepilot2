@@ -39,7 +39,7 @@ function openGithubRequest(data){
 async function waitForRunPublic(requestId){
   const deadline=Date.now()+20*60*1000;
   while(Date.now()<deadline){
-    const r=await fetch(apiBase+"/repos/"+githubOwner+"/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=50&event=repository_dispatch",{cache:"no-store"});
+    const r=await fetch(apiBase+"/repos/"+githubOwner+"/codepilot2/actions/workflows/"+workflowPath+"/runs?per_page=50&event=workflow_dispatch",{cache:"no-store"});
     const data=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(data.message||("GitHub Actions HTTP "+r.status));
     const run=(data.workflow_runs||[]).find(x=>String(x.name||"").includes(requestId)||String(x.display_title||"").includes(requestId));
