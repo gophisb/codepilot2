@@ -87,3 +87,44 @@ jobs:
               subprocess.check_call(args)
           print("Published",len(files),"files to",f"{owner}/{repo}")
           PY
+
+
+  zip-push-route:
+    if: github.event.issue.user.login == 'gophisb' && startsWith(github.event.issue.title, '[ZIP-PUSH]')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - name: Dispatch ZIP-PUSH
+        run: |
+          python3 - <<'PY'
+          import os,json,urllib.request
+          title=os.environ["ISSUE_TITLE"]
+          prefix="[ZIP-PUSH]"
+          if not title.startswith(prefix):
+              raise SystemExit("Not a ZIP-PUSH issue")
+          project_name=title[len(prefix):].strip()
+          if not project_name:
+              raise SystemExit("Missing project name")
+          payload=os.environ["ISSUE_BODY"]
+          if not payload:
+              raise SystemExit("Missing ZIP payload")
+          data={"ref":"main","inputs":{
+              "project_name":project_name,
+              "payload":payload,
+              "issue_number":os.environ["ISSUE_NUMBER"]}}
+          req=urllib.request.Request(
+              "https://api.github.com/repos/gophisb/codepilot2/actions/workflows/zip-push.yml/dispatches",
+              data=json.dumps(data).encode(),
+              headers={"Accept":"application/vnd.github+json",
+                       "Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                       "X-GitHub-Api-Version":"2026-03-10",
+                       "Content-Type":"application/json"},
+              method="POST")
+          with urllib.request.urlopen(req,timeout=30) as r:
+              if r.status not in (200,201,204):
+                  raise SystemExit("Dispatch HTTP "+str(r.status))
+          PY
