@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0A0F1E">
 <title>CodePilot2-gophisb</title>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{--bg:#0A0F1E;--card:#111827;--input:#1A2236;--accent:#00D4AA;--text:#F0F4FF;--muted:#7D8AA5;--border:rgba(255,255,255,.08);--danger:#fca5a5;--ok:#6ee7b7}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
@@ -22,7 +22,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 .panel{display:none}.panel.active{display:block}.codebox{min-height:390px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.8rem;line-height:1.5;white-space:pre;tab-size:2}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.actions button{margin-top:8px}.preview-frame{width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#fff}
 .file-meta{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--muted);font-size:.76rem;margin:7px 0}.hidden{display:none!important}
-.repo-row{display:grid;grid-template-columns:1fr auto;gap:8px}.repo-row button{width:auto;min-width:120px}
+.repo-row{display:grid;grid-template-columns:1fr auto;gap:8px}.repo-row button{width:auto;min-width:120px}.zip-dropzone{display:block;border:1px dashed var(--accent);background:var(--input);border-radius:10px;padding:16px;text-align:center;cursor:pointer;color:var(--text);margin-top:10px}.zip-dropzone.dragover{outline:2px solid var(--accent);background:rgba(0,212,170,.08)}.zip-dropzone input{display:none}.zip-dropzone small{display:block;color:var(--muted);margin-top:5px}
 @media(max-width:650px){.grid,.steps,.actions{grid-template-columns:1fr 1fr}.repo-row{grid-template-columns:1fr}.repo-row button{width:100%}}
 @media(max-width:420px){.grid,.steps,.actions{grid-template-columns:1fr}}
 </style>
@@ -68,15 +68,6 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 </div>
 
 <div class="card">
-<h2>2 — فتح مشروع ZIP</h2>
-<p class="note">ارفع مشروعاً مضغوطاً بصيغة ZIP. سيتم فكّه داخل CodePilot2 مباشرة. سيظهر الكود والمعاينة فوراً؛ أما تثبيت dependencies وتشغيل Node/React ونحوها فيحتاج إلى تشغيل Build عبر GitHub Actions.</p>
-<input id="zipInput" type="file" accept=".zip,application/zip">
-<div class="status" id="zipStatus">لم يتم اختيار ملف ZIP.</div>
-<button class="primary" id="publishZip">تشغيل المشروع فعلياً عبر GitHub</button>
-<div class="status" id="zipRunStatus">بعد رفع ZIP: ينشئ CodePilot2 مستودعاً، يثبت dependencies، يبني المشروع، ثم ينشره على GitHub Pages.</div>
-</div>
-
-<div class="card">
 <h2>3 — المسار التشغيلي</h2>
 <div class="steps">
 <div class="step">① الفكرة<br>والمواصفات</div>
@@ -97,6 +88,19 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 <div id="publicSite" class="status ok" style="display:none;margin-top:8px">
 🌐 <strong>الرابط العام:</strong> <a id="publicSiteLink" target="_blank" rel="noopener"></a>
 </div>
+</div>
+
+<div class="card">
+<h2>📦 استيراد مشروع ZIP</h2>
+<p class="note">استورد مشروع ZIP إلى شجرة الملفات الحالية. الحد 25 MB، والملف الواحد 500 KB، وبحد أقصى 200 ملف.</p>
+<label class="zip-dropzone" id="zipDropZone" for="zipInput">
+  📦 اختر ملف ZIP أو اسحبه هنا
+  <small>يُفحص المسار والحجم قبل فتح المشروع</small>
+  <input id="zipInput" type="file" accept=".zip,application/zip">
+</label>
+<div class="status" id="zipStatus">لم يتم اختيار ملف ZIP.</div>
+<button class="primary" id="publishZip" style="display:none">🚀 رفع إلى GitHub</button>
+<div class="status" id="zipRunStatus">بعد نجاح التحميل سيظهر زر رفع المشروع إلى GitHub.</div>
 </div>
 
 <div class="card output" id="output">
