@@ -154,8 +154,8 @@ async function loadZipProject(file){
  const entries=[]; let total=0; zipWarnings=[]; zipBinaryFiles=new Map();
  for(const entry of fileEntries){
   const original=String(entry.unsafeOriginalName||entry.name||"");
-  const safe=original.replace(/\\/g,"/").replace(/^\\/+/, "");
-  if(!safe||safe.split("/").some(p=>p===".."||p==="")){zipWarnings.push(original+" — مسار غير آمن");continue;}
+  const safe=original.replace(/\\/g,"/");
+  if(!safe||safe.startsWith("/")||safe.split("/").some(p=>p===".."||p==="."||p==="")){zipWarnings.push(original+" — مسار غير آمن");continue;}
   if(safe.startsWith(".git/")||safe.startsWith(".github/")){zipWarnings.push(safe+" — مسار محظور");continue;}
   if(entry._data&&entry._data.uncompressedSize>500*1024){zipWarnings.push(safe+" — أكبر من 500 KB");continue;}
   const bytes=await entry.async("uint8array");
@@ -454,7 +454,7 @@ async function githubJson(url){
 async function loadRepository(){
  const parsed=safeRepoUrl(q("repoUrl").value);
  if(!parsed){q("loadStatus").textContent="رابط GitHub العام غير صالح.";q("loadStatus").className="status err";return;}
- const button=q("loadRepo");button.disabled=true;q("loadStatus").textContent="جارٍ قراءة المستودع...";q("loadStatus").className="status";
+ const button=q("loadRepo");button.disabled=true;q("publishZip").style.display="none";q("loadStatus").textContent="جارٍ قراءة المستودع...";q("loadStatus").className="status";
  try{
   const repo=await githubJson("https://api.github.com/repos/"+encodeURIComponent(parsed.owner)+"/"+encodeURIComponent(parsed.repo));
   const branch=repo.default_branch||"main";
