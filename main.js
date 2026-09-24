@@ -5,6 +5,8 @@ const bridgeUrl="https://github.com/gophisb/codepilot2/issues/new";
 const workflowPath="codepilot-run.yml";
 let generatedFiles=[], currentFileIndex=0;
 let standaloneIndexPreview="";
+let zipBinaryFiles=new Map();
+let zipWarnings=[];
 
 function setGithubStatus(message,kind){q("githubStatus").textContent=message;q("githubStatus").className="status "+(kind||"");}
 function renderGithubState(){
@@ -145,137 +147,114 @@ q("generate").onclick=async()=>{
 async function loadZipProject(file){
  if(!window.JSZip)throw new Error("مكوّن ZIP لم يتم تحميله بعد؛ أعد فتح الصفحة.");
  if(!file)throw new Error("اختر ملف ZIP أولاً.");
- if(file.size>50*1024*1024)throw new Error("ملف ZIP أكبر من 50MB.");
+ if(file.size>25*1024*1024)throw new Error("ملف ZIP أكبر من 25 MB.");
  const zip=await JSZip.loadAsync(file,{createFolders:false,checkCRC32:false});
- const entries=[]; let total=0;
- for(const name of Object.keys(zip.files)){
-  const entry=zip.files[name]; if(entry.dir)continue;
-  const safe=name.replace(/\\/g,"/").replace(/^\/+/,"");
-  if(!safe||safe.split("/").some(p=>p===".."||p===""))continue;
-  if(/(^|\/)node_modules(\/|$)|(^|\/)\.git(\/|$)|(^|\/)dist(\/|$)|(^|\/)build(\/|$)/i.test(safe))continue;
-  const content=await entry.async("string");
-  if(content.includes("\u0000"))continue;
-  total+=content.length;
-  if(total>12*1024*1024)throw new Error("حجم الملفات النصية بعد الفك أكبر من 12MB.");
+ const fileEntries=Object.keys(zip.files).map(name=>zip.files[name]).filter(entry=>!entry.dir);
+ if(fileEntries.length>200)throw new Error("ملف ZIP يحتوي على أكثر من 200 ملف.");
+ const entries=[]; let total=0; zipWarnings=[]; zipBinaryFiles=new Map();
+ for(const entry of fileEntries){
+  const original=String(entry.unsafeOriginalName||entry.name||"");
+  const safe=original.replace(/\\/g,"/").replace(/^\\/+/, "");
+  if(!safe||safe.split("/").some(p=>p===".."||p==="")){zipWarnings.push(original+" — مسار غير آمن");continue;}
+  if(safe.startsWith(".git/")||safe.startsWith(".github/")){zipWarnings.push(safe+" — مسار محظور");continue;}
+  if(entry._data&&entry._data.uncompressedSize>500*1024){zipWarnings.push(safe+" — أكبر من 500 KB");continue;}
+  const bytes=await entry.async("uint8array");
+  if(bytes.byteLength>500*1024){zipWarnings.push(safe+" — أكبر من 500 KB");continue;}
+  total+=bytes.byteLength;
+  let content="";
+  let isText=true;
+  try{
+   content=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+   if(content.includes("\u0000"))isText=false;
+  }catch{isText=false;}
+  if(!isText){
+   const base64=await entry.async("base64");
+   zipBinaryFiles.set(safe,{base64,mime:zipMimeType(safe)});
+   content=base64;
+  }
   entries.push({path:safe,content});
-  if(entries.length>=200)break;
  }
- if(!entries.length)throw new Error("لم نجد ملفات نصية قابلة للعرض داخل ZIP.");
+ if(!entries.length)throw new Error("لم نجد ملفات قابلة للعرض داخل ZIP.");
  generatedFiles=entries;
  q("files").innerHTML="";
  generatedFiles.forEach((f,i)=>{const o=document.createElement("option");o.value=i;o.textContent=f.path;q("files").appendChild(o);});
  q("files").onchange=()=>showFile(q("files").value);
- q("summary").textContent="تم فتح ZIP: "+generatedFiles.length+" ملفاً نصياً.";
+ q("summary").textContent="تم فتح ZIP: "+generatedFiles.length+" ملفاً.";
  q("output").style.display="block"; showFile(0); buildPreview();
  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active")); document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active")); q("previewPanel").classList.add("active"); document.querySelector(".tab[data-tab=\"preview\"]").classList.add("active");
  const packageFile=generatedFiles.find(f=>normalizePath(f.path)==="package.json"||normalizePath(f.path).endsWith("/package.json"));
- q("loadStatus").textContent=packageFile ? "تم فتح ZIP ✓ — تم اكتشاف package.json؛ التثبيت والتشغيل الفعلي يحتاجان Build عبر GitHub Actions." : "تم فتح ZIP ✓ — المعاينة المحلية جاهزة.";q("loadStatus").className="status ok";
+ let status="تم تحميل "+generatedFiles.length+" ملف، الحجم الإجمالي "+(total/1024).toFixed(1)+" KB";
+ if(zipWarnings.length)status+="<br>"+zipWarnings.map(x=>"⚠️ "+x).join("<br>");
+ q("loadStatus").innerHTML=packageFile ? status+"<br>تم اكتشاف package.json؛ التثبيت والتشغيل الفعلي يحتاجان Build عبر GitHub Actions." : status;
+ q("loadStatus").className="status ok";
+ q("publishZip").style.display="block";
  q("output").scrollIntoView({behavior:"smooth",block:"start"});
 }
-const zipPagesWorkflow=(repoName)=>`name: Build and deploy ZIP project
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Setup Node
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v6
-        with:
-          node-version: 20
-      - name: Install dependencies
-        if: hashFiles('package.json') != ''
-        run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then npm ci; else npm install; fi
-      - name: Build
-        if: hashFiles('package.json') != ''
-        run: |
-          if grep -q '"vite"' package.json; then
-            npm run build -- --base="/\${GITHUB_REPOSITORY#*/}/"
-          else
-            npm run build --if-present
-          fi
-      - name: Select output
-        run: |
-          if [ -d dist ]; then echo "PAGES_DIR=dist" >> "$GITHUB_ENV"
-          elif [ -d build ]; then echo "PAGES_DIR=build" >> "$GITHUB_ENV"
-          elif [ -d out ]; then echo "PAGES_DIR=out" >> "$GITHUB_ENV"
-          elif [ -f index.html ]; then echo "PAGES_DIR=." >> "$GITHUB_ENV"
-          else echo "PAGES_DIR=." >> "$GITHUB_ENV"; fi
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: \${{ env.PAGES_DIR }}
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
-`;
+function zipMimeType(path){
+ const ext=String(path).split(".").pop().toLowerCase();
+ return ({png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",webp:"image/webp",svg:"image/svg+xml",ico:"image/x-icon",woff:"font/woff",woff2:"font/woff2",ttf:"font/ttf",otf:"font/otf"}[ext]||"application/octet-stream");
+}
+function base64ToUint8(base64){
+ const binary=atob(base64); const out=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++)out[i]=binary.charCodeAt(i);
+ return out;
+}
+function addGeneratedFilesToZip(zip){
+ generatedFiles.forEach(f=>{
+   const path=normalizePath(f.path);
+   const binary=zipBinaryFiles.get(path);
+   if(binary)zip.file(path,f.content,{base64:true,binary:true});
+   else zip.file(path,f.content);
+ });
+}
 async function publishZipProject(){
  if(!generatedFiles.length){
    q("zipRunStatus").textContent="ارفع ZIP أولاً.";
    q("zipRunStatus").className="status err";
    return;
  }
+ updateFileFromEditor();
  const b=q("publishZip"); b.disabled=true;
  try{
-   const requested=(q("project").value.trim()||"codepilot-zip-project")
-     .replace(/[^A-Za-z0-9._-]+/g,"-").replace(/^[^A-Za-z0-9]+/,"").slice(0,90)||"codepilot-zip-project";
-   const requestId="cpzip-"+Date.now().toString(36);
-   const workflow=zipPagesWorkflow(requested);
-   const files=generatedFiles.filter(f=>f.path && !/^\.github\//.test(f.path))
-     .map(f=>({path:normalizePath(f.path),content:f.content}));
-   files.push({path:".github/workflows/deploy-pages.yml",content:workflow});
-   const payload={target_owner:githubOwner,target_repo:requested,create_repo:true,files};
-   const encoded=b64utf8(JSON.stringify(payload));
-   if(encoded.length>60000){
-     throw new Error("المشروع كبير للرفع الآمن عبر GitHub Issue (الحد الحالي 60KB). للمشاريع الكبيرة استخدم التوليد عبر Actions أو نزّل ZIP.");
+   q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP وإرساله إلى GitHub…"; q("zipRunStatus").className="status";
+   const zip=new JSZip();
+   addGeneratedFilesToZip(zip);
+   const base64=await zip.generateAsync({type:"base64",compression:"DEFLATE",compressionOptions:{level:6}});
+   if(base64.length>61440){
+     throw new Error("المشروع كبير جداً للرفع المباشر — قم بتشغيل zip-push.yml يدويًا من GitHub Actions");
    }
-   const title="CodePilot2 Publish: "+requested+" ["+requestId+"]";
-   const body=["<!-- CodePilot2 publish","payload_b64="+encoded,"-->","","CodePilot2 ZIP publish request."].join("\n");
-   const url="https://github.com/gophisb/codepilot2/issues/new?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(body);
-   q("zipRunStatus").textContent="1/3 فتح GitHub لإرسال ZIP إلى جسر النشر…";
-   q("zipRunStatus").className="status";
+   let requested=window.prompt("اسم المشروع على GitHub","");
+   if(requested===null)throw new Error("تم إلغاء العملية.");
+   requested=String(requested).trim().replace(/\s+/g,"-").replace(/[^A-Za-z0-9-]+/g,"-").replace(/^-+|-+$/g,"");
+   if(!requested)throw new Error("اسم المشروع مطلوب.");
+   if(requested.length>50)throw new Error("اسم المشروع يجب ألا يتجاوز 50 حرفاً.");
+   const title="[ZIP-PUSH] "+requested;
+   const url=bridgeUrl+"?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(base64);
+   q("zipRunStatus").textContent="⏳ جارٍ فتح GitHub لإرسال طلب ZIP-PUSH…";
    const w=window.open(url,"_blank","noopener"); if(!w)window.location.href=url;
-   q("zipRunStatus").textContent="1/3 تم فتح GitHub. اضغط Submit new issue ليبدأ إنشاء المستودع ورفع الملفات.";
+   q("zipRunStatus").textContent="تم إرسال الطلب — تابع التقدم هنا: "+url;
    q("zipRunStatus").className="status ok";
-   q("repoUrl").value="https://github.com/gophisb/"+requested;
-   q("publicSiteLink").href="https://gophisb.github.io/"+requested+"/";
-   q("publicSiteLink").textContent="https://gophisb.github.io/"+requested+"/";
-   q("publicSite").style.display="block";
  }catch(e){
-   q("zipRunStatus").textContent="فشل تجهيز ZIP: "+(e.message||e);
+   q("zipRunStatus").textContent="فشل رفع ZIP: "+(e.message||e);
    q("zipRunStatus").className="status err";
  }finally{b.disabled=false;}
 }
 q("publishZip").onclick=publishZipProject;
 
-q("zipInput").onchange=async()=>{
- const file=q("zipInput").files[0]; if(!file)return;
- const s=q("zipStatus");s.textContent="جارٍ فك ZIP وفحص الملفات...";s.className="status";
- try{await loadZipProject(file);s.textContent="تم فتح المشروع من ZIP ✓";s.className="status ok";}
- catch(e){s.textContent="فشل فتح ZIP: "+(e.message||e);s.className="status err";}
-};
+async function handleZipFile(file){
+ const s=q("zipStatus");
+ q("publishZip").style.display="none";
+ s.textContent="جارٍ فحص ZIP…";s.className="status";
+ try{await loadZipProject(file);s.textContent="تم تحميل المشروع من ZIP ✓";s.className="status ok";}
+ catch(e){s.textContent="فشل فتح ZIP: "+(e.message||e);s.className="status err";q("publishZip").style.display="none";}
+}
+q("zipInput").onchange=async()=>handleZipFile(q("zipInput").files[0]);
+const zipDropZone=q("zipDropZone");
+if(zipDropZone){
+ ["dragenter","dragover"].forEach(type=>zipDropZone.addEventListener(type,e=>{e.preventDefault();zipDropZone.classList.add("dragover");}));
+ ["dragleave","drop"].forEach(type=>zipDropZone.addEventListener(type,e=>{e.preventDefault();zipDropZone.classList.remove("dragover");}));
+ zipDropZone.addEventListener("drop",e=>handleZipFile(e.dataTransfer.files[0]));
+}
 
 function updateFileFromEditor(){
  const f=generatedFiles[currentFileIndex];
@@ -399,7 +378,7 @@ function buildPreview(){
 async function downloadProjectZip(){
   if(!window.JSZip || !generatedFiles.length){ alert("لا يوجد مشروع جاهز."); return; }
   const zip=new JSZip();
-  generatedFiles.forEach(f=>zip.file(normalizePath(f.path),f.content));
+  addGeneratedFilesToZip(zip);
   const blob=await zip.generateAsync({type:"blob"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -484,6 +463,7 @@ async function loadRepository(){
   const candidates=(tree.tree||[]).filter(x=>x.type==="blob"&&!x.path.startsWith(".git/")&&!/(^|\/)(node_modules|dist|build|\.next|\.git)(\/|$)/.test(x.path)).slice(0,100);
   if(!candidates.length)throw new Error("لم نجد ملفات نصية قابلة للعرض.");
   generatedFiles=[];
+  zipBinaryFiles=new Map(); zipWarnings=[];
   for(const item of candidates){
    if(item.size>300000)continue;
    const raw="https://raw.githubusercontent.com/"+parsed.owner+"/"+parsed.repo+"/"+encodeURIComponent(branch)+"/"+item.path.split("/").map(encodeURIComponent).join("/");
