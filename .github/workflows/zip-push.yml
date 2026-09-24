@@ -138,7 +138,13 @@ jobs:
             candidate="zip-project-$(date +%s)"
           fi
           if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
-            candidate="${candidate}-$(date +%s)"
+            suffix="$(date +%s)"
+            base="$(printf '%s' "$candidate" | cut -c1-39)"
+            candidate="$base-$suffix"
+            if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
+              post_failure "❌ فشل ZIP-PUSH: تعارض متكرر في اسم المستودع بعد إضافة suffix زمني: `$candidate`."
+              exit 1
+            fi
           fi
           FINAL_REPO="$candidate"
           echo "FINAL_REPO=$FINAL_REPO" >> "$GITHUB_ENV"
@@ -164,9 +170,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          post_failure() {
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
+          }
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          python3 - "$now" "$run_url" "$PROJECT_FILE_COUNT" "$PROJECT_TOTAL_BYTES" <<'PY'
+          if ! python3 - "$now" "$run_url" "$PROJECT_FILE_COUNT" "$PROJECT_TOTAL_BYTES" <<'PY'
           import json,sys
           timestamp,run_url,file_count,total_bytes=sys.argv[1:]
           data={
@@ -181,6 +190,10 @@ jobs:
               json.dump(data,f,ensure_ascii=False,indent=2)
               f.write("\n")
           PY
+          then
+            post_failure "❌ فشل ZIP-PUSH: تعذر إنشاء generation-meta.json."
+            exit 1
+          fi
 
       - name: "Step 9 — Push files"
         env:
