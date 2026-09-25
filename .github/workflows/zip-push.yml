@@ -15,6 +15,11 @@ on:
         description: "Source issue number"
         required: true
         type: string
+      asset_url:
+        description: "Direct URL to ZIP file (large file path)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   issues: write
@@ -37,9 +42,17 @@ jobs:
           post_failure() {
             gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
           }
-          if ! base64 -d <<< "$PAYLOAD" > project.zip; then
-            post_failure "❌ فشل ZIP-PUSH: تعذر فك Base64 إلى project.zip."
-            exit 1
+          if [ -n "${{ inputs.asset_url }}" ]; then
+            echo "Downloading from asset URL..."
+            if ! curl -sL --fail "${{ inputs.asset_url }}" -o project.zip; then
+              post_failure "❌ فشل تنزيل الملف من الرابط المُرفق"
+              exit 1
+            fi
+          else
+            if ! base64 -d <<< "$PAYLOAD" > project.zip; then
+              post_failure "❌ فشل ZIP-PUSH: تعذر فك Base64 إلى project.zip."
+              exit 1
+            fi
           fi
 
       - name: "Step 2 — Size check"
