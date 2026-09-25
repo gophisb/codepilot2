@@ -1,0 +1,68 @@
+name: ZIP Upload Trigger
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  actions: write
+
+jobs:
+  prepare-zip-upload:
+    if: startsWith(github.event.issue.title, '[ZIP-PUSH-LARGE]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract and validate attachment
+        id: prepare
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          ATTACHMENT_URL="$(printf '%s\n' "$ISSUE_BODY" | grep -Eo 'https://github.com/user-attachments/files/[0-9]+/[^[:space:])]+\.zip' | head -n 1 || true)"
+          if [ -z "$ATTACHMENT_URL" ]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"               --body "❌ لم يتم إرفاق ملف ZIP — أعد فتح Issue جديد مع إرفاق الملف"
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"
+            exit 1
+          fi
+
+          PROJECT_NAME="$(printf '%s\n' "$ISSUE_BODY" | sed -n 's/^project_name=//p' | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/^-*//;s/-*$//' | cut -c1-50)"
+          [ -n "$PROJECT_NAME" ] || PROJECT_NAME="zip-project"
+
+          echo "attachment_url=$ATTACHMENT_URL" >> "$GITHUB_OUTPUT"
+          echo "project_name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+          echo "Attachment URL extracted successfully: $ATTACHMENT_URL"
+
+          STATUS="$(curl -L -sS -o /dev/null -w '%{http_code}' --head "$ATTACHMENT_URL" || true)"
+          echo "Attachment HEAD status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"               --body "❌ تعذر الوصول إلى ملف ZIP المرفق (HTTP $STATUS)."
+            gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"
+            exit 1
+          fi
+
+          echo "Attachment URL is accessible."
+
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Dispatch zip-push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROJECT_NAME: ${{ steps.prepare.outputs.project_name }}
+          ASSET_URL: ${{ steps.prepare.outputs.attachment_url }}
+        run: |
+          set -euo pipefail
+          gh workflow run zip-push.yml             --repo "$GITHUB_REPOSITORY"             -f project_name="$PROJECT_NAME"             -f payload=""             -f issue_number="$ISSUE_NUMBER"             -f asset_url="$ASSET_URL"
+
+      - name: Comment and label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"             --body "✅ تم استلام الملف — جارٍ المعالجة. تابع التقدم في Actions."
+          gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"             --add-label "zip-upload-processing"
