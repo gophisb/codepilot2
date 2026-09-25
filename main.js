@@ -225,7 +225,7 @@ async function publishZipProject(){
      q("zipRunStatus").className="status err";
      return;
    }
-   const projectName=prompt('اسم المشروع على GitHub (بدون مسافات):');
+   const projectName=window.prompt('اسم المشروع على GitHub (بدون مسافات):');
    if(!projectName || !projectName.trim()) return;
    const safeName=projectName.trim()
      .toLowerCase()
