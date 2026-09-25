@@ -219,20 +219,24 @@ async function publishZipProject(){
    q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP وإرساله إلى GitHub…"; q("zipRunStatus").className="status";
    const zip=new JSZip();
    addGeneratedFilesToZip(zip);
-   const base64=await zip.generateAsync({type:"base64",compression:"DEFLATE",compressionOptions:{level:6}});
-   if(base64.length>61440){
-     throw new Error("المشروع كبير جداً للرفع المباشر — قم بتشغيل zip-push.yml يدويًا من GitHub Actions");
+   const base64payload=await zip.generateAsync({type:"base64",compression:"DEFLATE",compressionOptions:{level:6}});
+   if(base64payload.length>61440){
+     q("zipRunStatus").textContent="حجم المشروع يتجاوز 60KB — لا يمكن رفعه عبر هذه الواجهة حالياً";
+     q("zipRunStatus").className="status err";
+     return;
    }
-   let requested=window.prompt("اسم المشروع على GitHub","");
-   if(requested===null)throw new Error("تم إلغاء العملية.");
-   requested=String(requested).trim().replace(/\s+/g,"-").replace(/[^A-Za-z0-9-]+/g,"-").replace(/^-+|-+$/g,"");
-   if(!requested)throw new Error("اسم المشروع مطلوب.");
-   if(requested.length>50)throw new Error("اسم المشروع يجب ألا يتجاوز 50 حرفاً.");
-   const title="[ZIP-PUSH] "+requested;
-   const url=bridgeUrl+"?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(base64);
-   q("zipRunStatus").textContent="⏳ جارٍ فتح GitHub لإرسال طلب ZIP-PUSH…";
+   const projectName=prompt('اسم المشروع على GitHub (بدون مسافات):');
+   if(!projectName || !projectName.trim()) return;
+   const safeName=projectName.trim()
+     .toLowerCase()
+     .replace(/[^a-z0-9-]/g,'-')
+     .replace(/^-+|-+$/g,'')
+     .slice(0,50) || 'zip-project';
+   const title="[ZIP-PUSH] "+safeName;
+   const body="project_name="+safeName+"\n"+base64payload;
+   const url=bridgeUrl+"?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(body);
    const w=window.open(url,"_blank","noopener"); if(!w)window.location.href=url;
-   q("zipRunStatus").textContent="تم إرسال الطلب — تابع التقدم هنا: "+url;
+   q("zipRunStatus").textContent="تم إرسال طلب الرفع — تابع التقدم في Issues";
    q("zipRunStatus").className="status ok";
  }catch(e){
    q("zipRunStatus").textContent="فشل رفع ZIP: "+(e.message||e);
