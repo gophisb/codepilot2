@@ -4,19 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       project_name:
-        description: "GitHub project name"
         required: true
         type: string
       payload:
-        description: "Base64-encoded ZIP"
         required: true
         type: string
       issue_number:
-        description: "Source issue number"
         required: true
         type: string
       asset_url:
-        description: "Direct URL to ZIP file (large file path)"
         required: false
         default: ""
         type: string
@@ -34,189 +30,78 @@ jobs:
       ISSUE_NUMBER: ${{ inputs.issue_number }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: "Step 1 — Decode"
+      - name: Decode or download ZIP
         env:
           GH_TOKEN: ${{ github.token }}
+          ASSET_URL: ${{ inputs.asset_url }}
         run: |
           set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
-          if [ -n "${{ inputs.asset_url }}" ]; then
-            echo "Downloading from asset URL..."
-            if ! curl -sL --fail "${{ inputs.asset_url }}" -o project.zip; then
-              post_failure "❌ فشل تنزيل الملف من الرابط المُرفق"
-              exit 1
-            fi
+          if [ -n "$ASSET_URL" ]; then
+            curl -sL --fail "$ASSET_URL" -o project.zip
           else
-            if ! base64 -d <<< "$PAYLOAD" > project.zip; then
-              post_failure "❌ فشل ZIP-PUSH: تعذر فك Base64 إلى project.zip."
-              exit 1
-            fi
+            base64 -d <<< "$PAYLOAD" > project.zip
           fi
 
-      - name: "Step 2 — Size check"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Validate ZIP
         run: |
           set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
           size=$(stat -c%s project.zip)
-          if [ "$size" -gt $((25*1024*1024)) ]; then
-            post_failure "❌ فشل ZIP-PUSH: حجم ZIP يتجاوز 25 MB."
-            exit 1
-          fi
           echo "ZIP_BYTES=$size" >> "$GITHUB_ENV"
-
-      - name: "Step 3 — File count check"
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
           count=$(unzip -Z1 project.zip | awk '!/\/$/{n++} END{print n+0}')
-          if [ "$count" -gt 200 ]; then
-            post_failure "❌ فشل ZIP-PUSH: عدد الملفات يتجاوز 200 ملفاً."
-            exit 1
-          fi
-          echo "ZIP_FILE_COUNT=$count" >> "$GITHUB_ENV"
-
-      - name: "Step 4 — Path validation"
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
+          if [ "$count" -gt 200 ]; then exit 1; fi
           bad=""
           while IFS= read -r path; do
             case "$path" in
-              */) continue ;;
-              /*|.git/*|.github/*|*../*|*./*) bad="$path"; break ;;
+              */) continue;;
+              /*|.git/*|.github/*|*../*|*./*) bad="$path"; break;;
             esac
           done < <(unzip -Z1 project.zip)
-          if [ -n "$bad" ]; then
-            post_failure "❌ فشل ZIP-PUSH: مسار غير آمن في ZIP: `$bad`"
-            exit 1
-          fi
+          [ -z "$bad" ] || { echo "Unsafe path: $bad"; exit 1; }
 
-      - name: "Step 5 — Extract and per-file validation"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Extract without dropping large files
         run: |
           set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
           rm -rf zip-work
           mkdir -p zip-work
-          if ! unzip -q project.zip -d zip-work; then
-            post_failure "❌ فشل ZIP-PUSH: تعذر استخراج ZIP بعد اجتياز فحص المسارات."
-            exit 1
-          fi
-          : > warnings.txt
-          while IFS= read -r -d '' file; do
-            size=$(stat -c%s "$file")
-            if [ "$size" -gt $((500*1024)) ]; then
-              rel="${file#zip-work/}"
-              printf '%s\n' "$rel" >> warnings.txt
-              rm -f -- "$file"
-            fi
-          done < <(find zip-work -type f -print0)
-          if [ -s warnings.txt ]; then
-            echo "تم تجاوز ملفات أكبر من 500 KB:"
-            cat warnings.txt
-          fi
+          unzip -q project.zip -d zip-work
           file_count=$(find zip-work -type f | wc -l)
           total_bytes=$(find zip-work -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}')
           echo "PROJECT_FILE_COUNT=$file_count" >> "$GITHUB_ENV"
           echo "PROJECT_TOTAL_BYTES=$total_bytes" >> "$GITHUB_ENV"
 
-      - name: "Step 6 — Repo name resolution"
+      - name: Resolve repository
         env:
           GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          post_failure() {
-            GH_TOKEN="${{ github.token }}" gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
           candidate=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' | cut -c1-50)
-          if [ -z "$candidate" ]; then
-            candidate="zip-project-$(date +%s)"
-          fi
+          [ -n "$candidate" ] || candidate="zip-project-$(date +%s)"
           if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
-            suffix="$(date +%s)"
-            base="$(printf '%s' "$candidate" | cut -c1-39)"
-            candidate="$base-$suffix"
-            if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
-              post_failure "❌ فشل ZIP-PUSH: تعارض متكرر في اسم المستودع بعد إضافة suffix زمني: `$candidate`."
-              exit 1
-            fi
+            candidate="$(printf '%s' "$candidate" | cut -c1-39)-$(date +%s)"
           fi
-          FINAL_REPO="$candidate"
-          echo "FINAL_REPO=$FINAL_REPO" >> "$GITHUB_ENV"
+          echo "FINAL_REPO=$candidate" >> "$GITHUB_ENV"
 
-      - name: "Step 7 — Create repository"
+      - name: Create repository
         env:
           GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-          post_failure() {
-            GH_TOKEN="${{ github.token }}" gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
-          error_file=$(mktemp)
-          if ! gh api --method POST user/repos -f "name=$FINAL_REPO" -F private=false > /tmp/create-repo.json 2>"$error_file"; then
-            api_error=$(cat "$error_file")
-            post_failure "❌ فشل ZIP-PUSH: تعذر إنشاء المستودع `$FINAL_REPO`.\n\n```\n$api_error\n```"
-            exit 1
-          fi
+        run: gh api --method POST user/repos -f "name=$FINAL_REPO" -F private=false >/dev/null
 
-      - name: "Step 8 — Generate generation-meta.json"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Add metadata
         run: |
-          set -euo pipefail
-          post_failure() {
-            gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
-          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          if ! python3 - "$now" "$run_url" "$PROJECT_FILE_COUNT" "$PROJECT_TOTAL_BYTES" <<'PY'
+          python3 - "$PROJECT_FILE_COUNT" "$PROJECT_TOTAL_BYTES" <<'PY'
           import json,sys
-          timestamp,run_url,file_count,total_bytes=sys.argv[1:]
-          data={
-            "source":"zip-import",
-            "timestamp":timestamp,
-            "file_count":int(file_count),
-            "total_bytes":int(total_bytes),
-            "pushed_by":"zip-push workflow",
-            "workflow_run":run_url
-          }
           with open("zip-work/generation-meta.json","w",encoding="utf-8") as f:
-              json.dump(data,f,ensure_ascii=False,indent=2)
+              json.dump({"source":"zip-import","file_count":int(sys.argv[1]),"total_bytes":int(sys.argv[2])},f,ensure_ascii=False,indent=2)
               f.write("\n")
           PY
-          then
-            post_failure "❌ فشل ZIP-PUSH: تعذر إنشاء generation-meta.json."
-            exit 1
-          fi
 
-      - name: "Step 9 — Push files"
+      - name: Push complete project
         env:
           GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          post_failure() {
-            GH_TOKEN="${{ github.token }}" gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$1" >/dev/null 2>&1 || true
-          }
           cd zip-work
           git init -q
           git config user.name "github-actions[bot]"
@@ -225,28 +110,10 @@ jobs:
           git commit -qm "Import project from ZIP"
           git branch -M main
           git remote add origin "https://x-access-token:${GH_REPO_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/${FINAL_REPO}.git"
-          if ! git push -u origin main; then
-            post_failure "❌ فشل ZIP-PUSH: تعذر دفع الملفات إلى المستودع `$FINAL_REPO`."
-            exit 1
-          fi
+          git push -u origin main
 
-      - name: "Step 10 — Post success comment"
+      - name: Report success
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          repo_url="${{ github.server_url }}/${{ github.repository_owner }}/$FINAL_REPO"
-          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          size_kb=$((PROJECT_TOTAL_BYTES/1024))
-          body="✅ تم رفع المشروع بنجاح
-          المستودع: $repo_url
-          الملفات: $PROJECT_FILE_COUNT
-          الحجم: $size_kb KB
-          تشغيل الـ Workflow: $run_url"
-          if [ -s warnings.txt ]; then
-            body="$body
-
-          الملفات التي تم تجاوزها (>500 KB):
-          $(sed 's/^/- /' warnings.txt)"
-          fi
-          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "$body"
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "✅ ZIP-PUSH تم: https://github.com/${GITHUB_REPOSITORY_OWNER}/$FINAL_REPO — $PROJECT_FILE_COUNT files / $PROJECT_TOTAL_BYTES bytes"
