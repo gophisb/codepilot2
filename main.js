@@ -216,30 +216,41 @@ async function publishZipProject(){
  updateFileFromEditor();
  const b=q("publishZip"); b.disabled=true;
  try{
-   q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP وإرساله إلى GitHub…"; q("zipRunStatus").className="status";
+   q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP كبير للرفع عبر GitHub…"; q("zipRunStatus").className="status";
    const zip=new JSZip();
    addGeneratedFilesToZip(zip);
-   const base64payload=await zip.generateAsync({type:"base64",compression:"DEFLATE",compressionOptions:{level:6}});
-   if(base64payload.length>61440){
-     q("zipRunStatus").textContent="حجم المشروع يتجاوز 60KB — لا يمكن رفعه عبر هذه الواجهة حالياً";
-     q("zipRunStatus").className="status err";
-     return;
-   }
-   const projectName=window.prompt('اسم المشروع على GitHub (بدون مسافات):');
+   const blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}});
+   const sizeMB=(blob.size/1024/1024).toFixed(2);
+   const projectName=window.prompt("اسم المشروع على GitHub (بدون مسافات):");
    if(!projectName || !projectName.trim()) return;
    const safeName=projectName.trim()
      .toLowerCase()
      .replace(/[^a-z0-9-]/g,'-')
      .replace(/^-+|-+$/g,'')
      .slice(0,50) || 'zip-project';
-   const title="[ZIP-PUSH] "+safeName;
-   const body="project_name="+safeName+"\n"+base64payload;
+   const filename=safeName+".zip";
+   const downloadUrl=URL.createObjectURL(blob);
+   const link=document.createElement("a");
+   link.href=downloadUrl;
+   link.download=filename;
+   document.body.appendChild(link);
+   link.click();
+   link.remove();
+   setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000);
+   const title="[ZIP-PUSH-LARGE] "+safeName;
+   const body=[
+     "project_name="+safeName,
+     "",
+     "📦 تم تجهيز ZIP بحجم "+sizeMB+" MB.",
+     "أرفق الملف الذي تم تنزيله للتو في هذه Issue ثم اضغط Submit new issue.",
+     "سيتم التقاط رابط GitHub user-attachments تلقائياً وتشغيل ZIP-PUSH."
+   ].join("\n");
    const url=bridgeUrl+"?title="+encodeURIComponent(title)+"&body="+encodeURIComponent(body);
    const w=window.open(url,"_blank","noopener"); if(!w)window.location.href=url;
-   q("zipRunStatus").textContent="تم إرسال طلب الرفع — تابع التقدم في Issues";
+   q("zipRunStatus").innerHTML="تم تنزيل <strong>"+filename+"</strong> ("+sizeMB+" MB). أرفقه في Issue المفتوحة ثم اضغط Submit.";
    q("zipRunStatus").className="status ok";
  }catch(e){
-   q("zipRunStatus").textContent="فشل رفع ZIP: "+(e.message||e);
+   q("zipRunStatus").textContent="فشل تجهيز ZIP: "+(e.message||e);
    q("zipRunStatus").className="status err";
  }finally{b.disabled=false;}
 }
