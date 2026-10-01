@@ -92,13 +92,14 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
 
 <div class="card">
 <h2>📦 استيراد مشروع ZIP</h2>
-<p class="note">استورد مشروع ZIP إلى شجرة الملفات الحالية. الحد 25 MB، والملف الواحد 500 KB، وبحد أقصى 200 ملف.</p>
+<p class="note">استورد مشروع ZIP ثم شاهد <strong>المعاينة قبل الرفع</strong>. حدود مسار ZIP-PUSH الحالية: <strong>600 MB للـZIP المضغوط</strong>، <strong>500 MB بعد الفك</strong>، <strong>95 MB للملف الواحد</strong>، وبحد أقصى <strong>20,000 ملف</strong>. الملفات الكبيرة تبقى داخل ZIP الأصلي ولا تُحشر في محرر الهاتف.</p>
 <label class="zip-dropzone" id="zipDropZone" for="zipInput">
   📦 اختر ملف ZIP أو اسحبه هنا
   <small>يُفحص المسار والحجم قبل فتح المشروع</small>
   <input id="zipInput" type="file" accept=".zip,application/zip">
 </label>
 <div class="status" id="zipStatus">لم يتم اختيار ملف ZIP.</div>
+<div class="status" id="zipPreviewInfo">بعد اختيار ZIP ستظهر المعاينة هنا قبل أي رفع إلى GitHub.</div>
 <button class="primary" id="publishZip" style="display:none">🚀 رفع إلى GitHub</button>
 <div class="status" id="zipRunStatus">بعد نجاح التحميل سيظهر زر رفع المشروع إلى GitHub.</div>
 </div>
@@ -146,7 +147,7 @@ button,a.btn{display:block;width:100%;border:0;border-radius:9px;padding:11px;te
     }
   }catch(_){}
   const s=document.createElement("script");
-  s.src="./main.js?v=20260923-stable-v7";
+  s.src="./main.js?v=20261001-zip-preview-v8";
   s.onload=function(){document.documentElement.dataset.codepilotBoot="ok";};
   s.onerror=function(){
     const el=document.getElementById("status");
