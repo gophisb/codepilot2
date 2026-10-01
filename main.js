@@ -419,7 +419,12 @@ function buildPreview(){
  const diagnostics="<script>(function(){function show(msg){try{var b=document.getElementById('__cp_error__')||document.body.appendChild(document.createElement('pre'));b.id='__cp_error__';b.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;background:white;color:#b00020;border:1px solid #b00020;padding:10px;font:12px monospace;white-space:pre-wrap;max-height:45vh;overflow:auto';b.textContent='CodePilot2 Preview Error\n'+msg;}catch(_){}}window.addEventListener('error',function(e){show((e.message||'Runtime error')+(e.filename?'\n'+e.filename:'')+(e.lineno?'\nline '+e.lineno:''));});window.addEventListener('unhandledrejection',function(e){show('Unhandled promise rejection\n'+(e.reason&&e.reason.stack||e.reason||'Unknown error'));});})();</script>";
  if(/<body\b/i.test(html))html=html.replace(/<body\b([^>]*)>/i,"<body$1>"+diagnostics);
  else html=diagnostics+html;
- frame.srcdoc=html;
+ if(frame.__cpPreviewUrl)URL.revokeObjectURL(frame.__cpPreviewUrl);
+ const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+ const url=URL.createObjectURL(blob);
+ frame.__cpPreviewUrl=url;
+ frame.onload=()=>{setTimeout(()=>{try{URL.revokeObjectURL(url)}catch(_){ }},1000);};
+ frame.src=url;
 }
 
 
