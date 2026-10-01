@@ -1,5 +1,7 @@
 name: ZIP-PUSH
 
+# مصادر الـ ZIP بالأولوية: zip_path (ملف داخل هذا المستودع) ثم asset_url (رابط) ثم payload (base64 صغير).
+# payload محدود بنحو 48KB بسبب حد GitHub لمدخلات التشغيل (65,535 حرفاً)، فلا يصلح للملفات الكبيرة.
 on:
   workflow_dispatch:
     inputs:
@@ -7,12 +9,18 @@ on:
         required: true
         type: string
       payload:
-        required: true
+        required: false
+        default: ""
         type: string
       issue_number:
         required: true
         type: string
       asset_url:
+        required: false
+        default: ""
+        type: string
+      zip_path:
+        description: "مسار ملف zip داخل هذا المستودع (مثل incoming/site.zip) للملفات الكبيرة"
         required: false
         default: ""
         type: string
@@ -24,69 +32,159 @@ permissions:
 jobs:
   zip-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       PROJECT_NAME: ${{ inputs.project_name }}
-      PAYLOAD: ${{ inputs.payload }}
       ISSUE_NUMBER: ${{ inputs.issue_number }}
       REPOSITORY: ${{ github.repository }}
+      REPORT: ${{ github.workspace }}/zip-report.json
     steps:
-      - name: Decode or download ZIP
+      - name: Checkout ZIP file from this repository
+        if: ${{ inputs.zip_path != '' && inputs.asset_url == '' }}
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: ${{ inputs.zip_path }}
+          sparse-checkout-cone-mode: false
+          lfs: true
+
+      - name: Get ZIP
         env:
           GH_TOKEN: ${{ github.token }}
           ASSET_URL: ${{ inputs.asset_url }}
+          ZIP_PATH: ${{ inputs.zip_path }}
+          PAYLOAD: ${{ inputs.payload }}
         run: |
           set -euo pipefail
+          fail() { echo "::error::$1"; printf '{"error":"%s","skipped":[]}' "$1" > "$REPORT"; exit 1; }
+          MAX_ZIP=629145600   # 600MB للملف المضغوط نفسه
           if [ -n "$ASSET_URL" ]; then
-            curl -sL --fail "$ASSET_URL" -o project.zip
-          else
-            base64 -d <<< "$PAYLOAD" > project.zip
-          fi
+            auth=()
+            case "$ASSET_URL" in
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/"*)
+                auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/octet-stream") ;;
+            esac
+            curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 1800 \
+              --max-filesize "$MAX_ZIP" "${auth[@]}" "$ASSET_URL" -o project.zip
+          elif [ -n "$ZIP_PATH" ]; then
+            case "$ZIP_PATH" in
+              /*|*..*) fail "مسار zip غير مسموح (يجب أن يكون نسبياً داخل المستودع)" ;;
+            esac
+            [ -f "$ZIP_PATH" ] || fail "ملف zip غير موجود في المستودع على المسار المحدد"
 
-      - name: Validate ZIP
-        run: |
-          set -euo pipefail
+            cp "$ZIP_PATH" project.zip
+          elif [ -n "$PAYLOAD" ]; then
+            printf '%s' "$PAYLOAD" | sed 's/^data:[^,]*,//' | tr -d '[:space:]' | base64 -d > project.zip
+          else
+            fail "لا يوجد مصدر ZIP (payload أو asset_url أو zip_path)"
+          fi
           size=$(stat -c%s project.zip)
           echo "ZIP_BYTES=$size" >> "$GITHUB_ENV"
-          count=$(unzip -Z1 project.zip | awk '!/\/$/{n++} END{print n+0}')
-          if [ "$count" -gt 200 ]; then exit 1; fi
-          bad=""
-          while IFS= read -r path; do
-            case "$path" in
-              */) continue;;
-              /*|.git/*|.github/*|*../*|*./*) bad="$path"; break;;
-            esac
-          done < <(unzip -Z1 project.zip)
-          [ -z "$bad" ] || { echo "Unsafe path: $bad"; exit 1; }
+          [ "$size" -le "$MAX_ZIP" ] || fail "ملف ZIP أكبر من 600MB"
 
-      - name: Extract without dropping large files
+      # فحص + فك آمن. أي فشل يُكتب في التقرير بالعربية ليصل إلى الـ issue.
+      - name: Validate and extract ZIP
         run: |
-          set -euo pipefail
-          rm -rf zip-work
-          mkdir -p zip-work
-          unzip -q project.zip -d zip-work
-          file_count=$(find zip-work -type f | wc -l)
-          total_bytes=$(find zip-work -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}')
-          echo "PROJECT_FILE_COUNT=$file_count" >> "$GITHUB_ENV"
-          echo "PROJECT_TOTAL_BYTES=$total_bytes" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import json, os, shutil, sys, zipfile
+          from pathlib import Path
 
-      - name: Resolve repository
-        env:
-          GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-          candidate=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' | cut -c1-50)
-          [ -n "$candidate" ] || candidate="zip-project-$(date +%s)"
-          if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
-            candidate="$(printf '%s' "$candidate" | cut -c1-39)-$(date +%s)"
-          fi
-          echo "FINAL_REPO=$candidate" >> "$GITHUB_ENV"
+          MAX_FILES = 20000
+          MAX_TOTAL = 500 * 1024**2        # بعد فك الضغط
+          MAX_FILE = 95 * 1024**2          # GitHub يرفض > 100MiB
+          REPORT = os.environ["REPORT"]
+          skipped = []
 
-      - name: Create repository
-        env:
-          GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
-        run: gh api --method POST user/repos -f "name=$FINAL_REPO" -F private=false >/dev/null
+          def fail(msg):
+              Path(REPORT).write_text(json.dumps({"error": msg, "skipped": skipped}, ensure_ascii=False), encoding="utf-8")
+              print("::error::" + msg)
+              sys.exit(1)
+
+          def fix_name(info):
+              n = info.filename
+              if info.flag_bits & 0x800:
+                  return n
+              try:
+                  raw = n.encode("cp437")
+              except UnicodeEncodeError:
+                  return n
+              for enc in ("utf-8", "cp1256"):
+                  try:
+                      return raw.decode(enc)
+                  except UnicodeDecodeError:
+                      pass
+              return n
+
+          if not zipfile.is_zipfile("project.zip"):
+              fail("الملف المستلم ليس ZIP صالحاً (ربما لم يكتمل رفعه أو تنزيله)")
+          work = Path("zip-work")
+          shutil.rmtree(work, ignore_errors=True)
+          work.mkdir()
+
+          try:
+              zf = zipfile.ZipFile("project.zip")
+              infos = [i for i in zf.infolist() if not i.is_dir()]
+              if len(infos) > MAX_FILES:
+                  fail(f"عدد الملفات ({len(infos)}) يتجاوز الحد المسموح {MAX_FILES}")
+              declared = sum(i.file_size for i in infos)
+              if declared > MAX_TOTAL:
+                  fail(f"الحجم بعد فك الضغط ({declared // 1024**2}MB) يتجاوز الحد {MAX_TOTAL // 1024**2}MB")
+
+              entries = []
+              for info in infos:
+                  name = fix_name(info).replace("\\", "/")
+                  if name.startswith("/") or ".." in name.split("/"):
+                      fail("مسار غير آمن داخل الأرشيف: " + name)
+                  parts = [p for p in name.split("/") if p not in ("", ".")]
+                  if not parts:
+                      continue
+                  if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                      skipped.append({"path": "/".join(parts), "reason": "رابط رمزي (symlink)"})
+                      continue
+                  if ".git" in parts[:-1] or parts[-1] == ".git" or "__MACOSX" in parts or parts[-1].startswith("._"):
+                      continue
+                  entries.append((info, parts))
+
+              tops = {p[0] for _, p in entries}
+              if len(tops) == 1 and entries and all(len(p) > 1 for _, p in entries):
+                  entries = [(i, p[1:]) for i, p in entries]   # إزالة المجلد الأعلى الوحيد
+
+              root = work.resolve()
+              total = count = 0
+              for info, parts in entries:
+                  rel = "/".join(parts)
+                  if parts[:2] == [".github", "workflows"]:
+                      skipped.append({"path": rel, "reason": "ملفات workflows لا تُنقل (تحتاج صلاحية workflow)"})
+                      continue
+                  if info.file_size > MAX_FILE:
+                      skipped.append({"path": rel, "reason": f"أكبر من 95MB ({info.file_size // 1024**2}MB) ويرفضه GitHub"})
+                      continue
+                  target = work.joinpath(*parts)
+                  if root not in target.resolve().parents:
+                      fail("مسار غير آمن داخل الأرشيف: " + rel)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  written = 0
+                  with zf.open(info) as src, open(target, "wb") as out:
+                      while True:
+                          chunk = src.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          written += len(chunk)
+                          if written > info.file_size or total + written > MAX_TOTAL:
+                              fail("حجم الملف الفعلي أكبر من المعلن داخل الأرشيف: " + rel)
+                          out.write(chunk)
+                  total += written
+                  count += 1
+          except zipfile.BadZipFile as e:
+              fail("الأرشيف تالف: " + str(e))
+
+          if count == 0:
+              fail("لا توجد ملفات صالحة داخل الأرشيف")
+
+          Path(REPORT).write_text(json.dumps({"error": "", "skipped": skipped, "files": count, "bytes": total}, ensure_ascii=False), encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"PROJECT_FILE_COUNT={count}\nPROJECT_TOTAL_BYTES={total}\n")
+          print(f"OK: {count} files, {total / 1024**2:.1f}MB, skipped={len(skipped)}")
+          PY
 
       - name: Add metadata
         run: |
@@ -97,8 +195,22 @@ jobs:
               f.write("\n")
           PY
 
-      - name: Push complete project
+      - name: Resolve repository
         env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          candidate=$(printf '%s' "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' | cut -c1-50)
+          [ -n "$candidate" ] || candidate="zip-project-$(date +%s)"
+          if gh api "repos/${GITHUB_REPOSITORY_OWNER}/$candidate" >/dev/null 2>&1; then
+            candidate="$(printf '%s' "$candidate" | cut -c1-39)-$(date +%s)"
+          fi
+          echo "FINAL_REPO=$candidate" >> "$GITHUB_ENV"
+
+      # الكوميت المحلي يُجهَّز قبل إنشاء المستودع، كي لا يبقى مستودع فارغ إن فشل شيء قبل الدفع.
+      - name: Create repository and push (in batches when large)
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
           GH_REPO_TOKEN: ${{ secrets.GH_REPO_TOKEN }}
         run: |
           set -euo pipefail
@@ -106,14 +218,93 @@ jobs:
           git init -q
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all
-          git commit -qm "Import project from ZIP"
-          git branch -M main
+          git checkout -q -b main
+          gh api --method POST user/repos -f "name=$FINAL_REPO" -F private=false >/dev/null
+          echo "REPO_CREATED=1" >> "$GITHUB_ENV"
           git remote add origin "https://x-access-token:${GH_REPO_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/${FINAL_REPO}.git"
-          git push -u origin main
+          python3 - <<'PY'
+          import os, subprocess, sys, time
+          from pathlib import Path
+
+          BATCH_BYTES = 80 * 1024**2
+          BATCH_FILES = 3000
+          SINGLE_LIMIT = 150 * 1024**2
+
+          files = []
+          for p in sorted(Path(".").rglob("*")):
+              if p.is_file() and ".git" not in p.parts:
+                  files.append((p.as_posix(), p.stat().st_size))
+          total = sum(s for _, s in files)
+
+          if total <= SINGLE_LIMIT and len(files) <= BATCH_FILES * 2:
+              batches = [files]
+          else:
+              batches, cur, cur_b = [], [], 0
+              for f in files:
+                  if cur and (cur_b + f[1] > BATCH_BYTES or len(cur) >= BATCH_FILES):
+                      batches.append(cur); cur, cur_b = [], 0
+                  cur.append(f); cur_b += f[1]
+              if cur:
+                  batches.append(cur)
+
+          def run(*args, **kw):
+              return subprocess.run(args, check=True, **kw)
+
+          def push(first):
+              cmd = ["git", "push", "-u", "origin", "main"] if first else ["git", "push", "origin", "main"]
+              for attempt in range(1, 4):
+                  r = subprocess.run(cmd, capture_output=True, text=True)
+                  if r.returncode == 0:
+                      return
+                  print(f"push attempt {attempt}/3 failed: {r.stderr.strip()[-600:]}")
+                  time.sleep(10 * attempt)
+              sys.exit("::error::فشل git push بعد 3 محاولات")
+
+          n = len(batches)
+          for i, batch in enumerate(batches, 1):
+              data = b"\0".join(p.encode() for p, _ in batch)
+              run("git", "add", "--pathspec-from-file=-", "--pathspec-file-nul", input=data)
+              msg = "Import project from ZIP" if n == 1 else f"Import project from ZIP (part {i}/{n})"
+              run("git", "commit", "-qm", msg)
+              print(f"{msg}: {len(batch)} files")
+              push(first=(i == 1))
+          PY
 
       - name: Report success
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue comment "$ISSUE_NUMBER" --repo "$REPOSITORY" --body "✅ ZIP-PUSH تم: https://github.com/${GITHUB_REPOSITORY_OWNER}/$FINAL_REPO — $PROJECT_FILE_COUNT files / $PROJECT_TOTAL_BYTES bytes"
+          python3 - <<'PY'
+          import json, os, subprocess
+          rep = json.load(open(os.environ["REPORT"], encoding="utf-8"))
+          owner, repo = os.environ["GITHUB_REPOSITORY_OWNER"], os.environ["FINAL_REPO"]
+          body = f"✅ ZIP-PUSH تم: https://github.com/{owner}/{repo} — {os.environ['PROJECT_FILE_COUNT']} files / {os.environ['PROJECT_TOTAL_BYTES']} bytes"
+          sk = rep.get("skipped", [])
+          if sk:
+              body += f"\n\n⚠️ لم يُنقل {len(sk)} ملف:\n" + "\n".join(f"- `{s['path']}` — {s['reason']}" for s in sk[:30])
+              if len(sk) > 30:
+                  body += f"\n- ... و{len(sk) - 30} أخرى"
+          subprocess.run(["gh", "issue", "comment", os.environ["ISSUE_NUMBER"], "--repo", os.environ["REPOSITORY"], "--body", body], check=True)
+          PY
+
+      - name: Report failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          reason = ""
+          try:
+              reason = json.load(open(os.environ["REPORT"], encoding="utf-8")).get("error", "")
+          except Exception:
+              pass
+          body = "❌ ZIP-PUSH فشل"
+          if reason:
+              body += f": {reason}"
+          if os.environ.get("REPO_CREATED") == "1":
+              body += f"\n\n⚠️ أُنشئ المستودع `{os.environ.get('FINAL_REPO','')}` قبل الفشل وقد يكون ناقصاً؛ احذفه أو أكمل رفعه يدوياً."
+          body += f"\n\nالسجل: {os.environ['RUN_URL']}"
+          subprocess.run(["gh", "issue", "comment", os.environ["ISSUE_NUMBER"], "--repo", os.environ["REPOSITORY"], "--body", body])
+          PY
