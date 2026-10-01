@@ -7,6 +7,12 @@ let generatedFiles=[], currentFileIndex=0;
 let standaloneIndexPreview="";
 let zipBinaryFiles=new Map();
 let zipWarnings=[];
+let selectedZipFile=null;
+let zipPreviewDirty=false;
+const ZIP_MAX_COMPRESSED=600*1024*1024;
+const ZIP_MAX_FILES=20000;
+const ZIP_MAX_FILE=95*1024*1024;
+const ZIP_MAX_EXTRACTED=500*1024*1024;
 
 function setGithubStatus(message,kind){q("githubStatus").textContent=message;q("githubStatus").className="status "+(kind||"");}
 function renderGithubState(){
@@ -147,20 +153,23 @@ q("generate").onclick=async()=>{
 async function loadZipProject(file){
  if(!window.JSZip)throw new Error("مكوّن ZIP لم يتم تحميله بعد؛ أعد فتح الصفحة.");
  if(!file)throw new Error("اختر ملف ZIP أولاً.");
- if(file.size>25*1024*1024)throw new Error("ملف ZIP أكبر من 25 MB.");
+ if(file.size>ZIP_MAX_COMPRESSED)throw new Error("ملف ZIP أكبر من 600 MB، وهو الحد الأقصى لمسار ZIP-PUSH.");
+ selectedZipFile=file;
+ zipPreviewDirty=false;
  const zip=await JSZip.loadAsync(file,{createFolders:false,checkCRC32:false});
  const fileEntries=Object.keys(zip.files).map(name=>zip.files[name]).filter(entry=>!entry.dir);
- if(fileEntries.length>200)throw new Error("ملف ZIP يحتوي على أكثر من 200 ملف.");
+ if(fileEntries.length>ZIP_MAX_FILES)throw new Error("ملف ZIP يحتوي على أكثر من 20,000 ملف.");
  const entries=[]; let total=0; zipWarnings=[]; zipBinaryFiles=new Map();
  for(const entry of fileEntries){
   const original=String(entry.unsafeOriginalName||entry.name||"");
   const safe=original.replace(/\\/g,"/");
   if(!safe||safe.startsWith("/")||safe.split("/").some(p=>p===".."||p==="."||p==="")){zipWarnings.push(original+" — مسار غير آمن");continue;}
   if(safe.startsWith(".git/")||safe.startsWith(".github/")){zipWarnings.push(safe+" — مسار محظور");continue;}
-  if(entry._data&&entry._data.uncompressedSize>500*1024){zipWarnings.push(safe+" — أكبر من 500 KB");continue;}
+  if(entry._data&&entry._data.uncompressedSize>ZIP_MAX_FILE){zipWarnings.push(safe+" — أكبر من 95 MB؛ سيبقى في ZIP الأصلي ولن يدخل محرر الهاتف.");continue;}
   const bytes=await entry.async("uint8array");
-  if(bytes.byteLength>500*1024){zipWarnings.push(safe+" — أكبر من 500 KB");continue;}
+  if(bytes.byteLength>ZIP_MAX_FILE){zipWarnings.push(safe+" — أكبر من 95 MB؛ سيبقى في ZIP الأصلي ولن يدخل محرر الهاتف.");continue;}
   total+=bytes.byteLength;
+  if(total>ZIP_MAX_EXTRACTED)throw new Error("الحجم المفكوك يتجاوز 500 MB، وهو الحد الأقصى لمسار ZIP-PUSH.");
   let content="";
   let isText=true;
   try{
@@ -179,16 +188,21 @@ async function loadZipProject(file){
  q("files").innerHTML="";
  generatedFiles.forEach((f,i)=>{const o=document.createElement("option");o.value=i;o.textContent=f.path;q("files").appendChild(o);});
  q("files").onchange=()=>showFile(q("files").value);
- q("summary").textContent="تم فتح ZIP: "+generatedFiles.length+" ملفاً.";
+ q("summary").textContent="تم فتح ZIP للمعاينة قبل الرفع: "+generatedFiles.length+" ملفاً.";
+ q("zipPreviewInfo").textContent="✓ تمت المعاينة قبل الرفع — "+generatedFiles.length+" ملفاً قابلاً للعرض داخل الهاتف.";
+ q("zipPreviewInfo").className="status ok";
  q("output").style.display="block"; showFile(0); buildPreview();
  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active")); document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active")); q("previewPanel").classList.add("active"); document.querySelector(".tab[data-tab=\"preview\"]").classList.add("active");
  const packageFile=generatedFiles.find(f=>normalizePath(f.path)==="package.json"||normalizePath(f.path).endsWith("/package.json"));
- let status="تم تحميل "+generatedFiles.length+" ملف، الحجم الإجمالي "+(total/1024).toFixed(1)+" KB";
+ let status="تم فتح ZIP: "+generatedFiles.length+" ملفاً قابلاً للعرض، الحجم المفكوك المقروء "+(total/1024/1024).toFixed(2)+" MB";
  if(zipWarnings.length)status+="<br>"+zipWarnings.map(x=>"⚠️ "+x).join("<br>");
  q("loadStatus").innerHTML=packageFile ? status+"<br>تم اكتشاف package.json؛ التثبيت والتشغيل الفعلي يحتاجان Build عبر GitHub Actions." : status;
  q("loadStatus").className="status ok";
  q("publishZip").style.display="block";
  q("output").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function previewBinaryDataUrl(base64,mime){
+ return "data:"+mime+";base64,"+base64;
 }
 function zipMimeType(path){
  const ext=String(path).split(".").pop().toLowerCase();
@@ -216,10 +230,19 @@ async function publishZipProject(){
  updateFileFromEditor();
  const b=q("publishZip"); b.disabled=true;
  try{
-   q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP كبير للرفع عبر GitHub…"; q("zipRunStatus").className="status";
-   const zip=new JSZip();
-   addGeneratedFilesToZip(zip);
-   const blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}});
+   q("zipRunStatus").textContent="⏳ جارٍ تجهيز ZIP للرفع عبر GitHub…"; q("zipRunStatus").className="status";
+   let blob=selectedZipFile;
+   if(!blob)throw new Error("لم يتم الاحتفاظ بملف ZIP الأصلي.");
+   if(zipPreviewDirty){
+     const zip=await JSZip.loadAsync(selectedZipFile,{createFolders:false,checkCRC32:false});
+     generatedFiles.forEach(f=>{
+       const path=normalizePath(f.path);
+       const binary=zipBinaryFiles.get(path);
+       if(binary)zip.file(path,f.content,{base64:true,binary:true});
+       else zip.file(path,f.content);
+     });
+     blob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:6}});
+   }
    const sizeMB=(blob.size/1024/1024).toFixed(2);
    const projectName=window.prompt("اسم المشروع على GitHub (بدون مسافات):");
    if(!projectName || !projectName.trim()) return;
@@ -273,7 +296,11 @@ if(zipDropZone){
 
 function updateFileFromEditor(){
  const f=generatedFiles[currentFileIndex];
- if(f) f.content=q("codeView").value;
+ if(f){
+   const next=q("codeView").value;
+   if(next!==f.content)zipPreviewDirty=true;
+   f.content=next;
+ }
 }
 function showFile(index){
  currentFileIndex=Number(index)||0;const f=generatedFiles[currentFileIndex];if(!f)return;
@@ -341,6 +368,10 @@ function buildPreview(){
      const dep=resolvePreviewPath(key,p2);
      const asset=dep&&map.get(dep);
      if(!asset)return um;
+     if(zipBinaryFiles.has(dep)){
+       const bin=zipBinaryFiles.get(dep);
+       return "url("+previewBinaryDataUrl(bin.base64,bin.mime)+")";
+     }
      if(/\.svg$/i.test(dep))return "url("+previewDataUrl(asset.content,"image/svg+xml")+")";
      if(/\.(css|txt|json|js)$/i.test(dep))return "url("+previewDataUrl(asset.content,"text/plain")+")";
      return um;
@@ -379,6 +410,7 @@ function buildPreview(){
    else if(/\.html?$/i.test(key))mime="text/html";
    else if(/\.json$/i.test(key))mime="application/json";
    else if(/\.txt$/i.test(key))mime="text/plain";
+   else if(zipBinaryFiles.has(key))return attr+'="'+previewBinaryDataUrl(zipBinaryFiles.get(key).base64,zipBinaryFiles.get(key).mime)+'"';
    else return m;
    return attr+'="'+previewDataUrl(asset.content,mime)+'"';
  });
