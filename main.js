@@ -156,6 +156,7 @@ async function loadZipProject(file){
  if(file.size>ZIP_MAX_COMPRESSED)throw new Error("ملف ZIP أكبر من 600 MB، وهو الحد الأقصى لمسار ZIP-PUSH.");
  selectedZipFile=file;
  zipPreviewDirty=false;
+ standaloneIndexPreview="";
  const zip=await JSZip.loadAsync(file,{createFolders:false,checkCRC32:false});
  const fileEntries=Object.keys(zip.files).map(name=>zip.files[name]).filter(entry=>!entry.dir);
  if(fileEntries.length>ZIP_MAX_FILES)throw new Error("ملف ZIP يحتوي على أكثر من 20,000 ملف.");
@@ -405,12 +406,12 @@ function buildPreview(){
    const key=resolvePreviewPath(htmlFile.path,p);
    const asset=key&&map.get(key);
    if(!asset)return m;
+   if(zipBinaryFiles.has(key))return attr+'="'+previewBinaryDataUrl(zipBinaryFiles.get(key).base64,zipBinaryFiles.get(key).mime)+'"';
    let mime="text/plain";
    if(/\.svg$/i.test(key))mime="image/svg+xml";
    else if(/\.html?$/i.test(key))mime="text/html";
    else if(/\.json$/i.test(key))mime="application/json";
    else if(/\.txt$/i.test(key))mime="text/plain";
-   else if(zipBinaryFiles.has(key))return attr+'="'+previewBinaryDataUrl(zipBinaryFiles.get(key).base64,zipBinaryFiles.get(key).mime)+'"';
    else return m;
    return attr+'="'+previewDataUrl(asset.content,mime)+'"';
  });
